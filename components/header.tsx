@@ -21,8 +21,8 @@ export function Header() {
     function onScroll() {
       const y = window.scrollY
       setScrolled(prev => {
-        if (!prev && y > 60) return true
-        if (prev && y < 20) return false
+        if (!prev && y > 80) return true
+        if (prev && y < 30) return false
         return prev
       })
     }
@@ -44,15 +44,23 @@ export function Header() {
       }`}
     >
       <div className="container mx-auto flex h-full items-center justify-between px-4">
-        <Link href="/" className="hover:opacity-80 transition-opacity">
-          <Image
-            src={scrolled ? "/logo_icon.png" : "/logo_full.png"}
-            alt="5entidos"
-            width={200}
-            height={200}
-            className={`transition-all duration-300 ${scrolled ? "h-10 w-10" : "h-24 w-auto max-w-[96px]"}`}
-            priority
-          />
+        <Link href="/" className="hover:opacity-80 transition-opacity relative">
+          {/* Wrapper clips the full logo as header shrinks */}
+          <div className={`transition-all duration-300 overflow-hidden ${scrolled ? "h-10" : "h-24"}`}>
+            <Image
+              src="/logo_full.png"
+              alt="5entidos"
+              width={200}
+              height={200}
+              className={`h-24 w-auto max-w-[96px] transition-opacity duration-300 ${scrolled ? "opacity-0" : "opacity-100"}`}
+              priority
+            />
+          </div>
+          {/* Compact: icon + wordmark fade in on scroll */}
+          <div className={`absolute inset-0 flex items-center gap-2 transition-opacity duration-300 ${scrolled ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+            <Image src="/logo_icon.png" alt="" width={40} height={40} className="h-10 w-10 flex-shrink-0" priority />
+            <span className="font-bold text-lg tracking-tight text-foreground whitespace-nowrap">5entidos</span>
+          </div>
         </Link>
 
         <div className="flex items-center gap-2">

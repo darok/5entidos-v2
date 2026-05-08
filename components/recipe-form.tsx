@@ -14,7 +14,6 @@ import {
 import { ImageUpload } from "@/components/image-upload"
 import { IngredientRow, type IngredientRowValue } from "@/components/ingredient-row"
 import { StepRow } from "@/components/step-row"
-import { RATING_LABELS } from "@/types"
 import { PlusCircle, X, Pencil, Check } from "lucide-react"
 import type { Tag, Ingredient, Unit } from "@/types"
 
@@ -340,9 +339,6 @@ export function RecipeForm({
                 </span>
               </button>
             ))}
-            {form.rating && (
-              <span className="text-xs text-muted-foreground ml-2">{RATING_LABELS[parseInt(form.rating)]}</span>
-            )}
           </div>
         </div>
       </section>

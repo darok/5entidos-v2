@@ -7,13 +7,15 @@ interface UnsplashPhoto {
   links: { download_location: string }
 }
 
-// GET /api/unsplash/search?query=... — proxies Unsplash API, keeps key server-side
+// GET /api/unsplash/search?query=...&page=1 — proxies Unsplash API, keeps key server-side
 export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get("query")
   if (!query) return NextResponse.json({ error: "Query required" }, { status: 400 })
 
+  const page = request.nextUrl.searchParams.get("page") ?? "1"
+
   const res = await fetch(
-    `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=12&orientation=landscape`,
+    `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=12&page=${page}&orientation=landscape`,
     { headers: { Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY}` } }
   )
 
