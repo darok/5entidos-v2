@@ -11,6 +11,9 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog"
 import { ImageUpload } from "@/components/image-upload"
 import { IngredientRow, type IngredientRowValue } from "@/components/ingredient-row"
 import { StepRow } from "@/components/step-row"
@@ -86,6 +89,7 @@ export function RecipeForm({
   const [showBanner, setShowBanner] = useState(true)
   const [notesEditing, setNotesEditing] = useState(false)
   const [notesText, setNotesText] = useState(audioNotes ?? "")
+  const [pendingNewIngredients, setPendingNewIngredients] = useState<string[]>([])
 
   function setField<K extends keyof RecipeFormData>(key: K, value: RecipeFormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -134,7 +138,45 @@ export function RecipeForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+
+    // Check for ingredient rows with a name but no DB id
+    const unresolved = form.ingredients
+      .filter((i) => !i.ingredient_id && i.ingredient_name.trim())
+      .map((i) => i.ingredient_name.trim())
+
+    if (unresolved.length > 0) {
+      setPendingNewIngredients(unresolved)
+      return
+    }
+
+    await doSave(form.ingredients)
+  }
+
+  async function handleConfirmCreateIngredients() {
+    setPendingNewIngredients([])
     setSaving(true)
+    setError(null)
+
+    try {
+      // Create each new ingredient and patch the form rows with real IDs
+      const updatedIngredients = [...form.ingredients]
+      for (let i = 0; i < updatedIngredients.length; i++) {
+        const row = updatedIngredients[i]
+        if (!row.ingredient_id && row.ingredient_name.trim()) {
+          const ing = await createIngredient(row.ingredient_name.trim())
+          updatedIngredients[i] = { ...row, ingredient_id: ing.id }
+        }
+      }
+      await doSave(updatedIngredients)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al crear ingredientes")
+      setSaving(false)
+    }
+  }
+
+  async function doSave(ingredients: IngredientRowValue[]) {
+    setSaving(true)
+    setError(null)
 
     const payload = {
       title: form.title.trim(),
@@ -145,7 +187,7 @@ export function RecipeForm({
       servings: form.servings ? parseInt(form.servings) : null,
       rating: form.rating ? parseInt(form.rating) : null,
       rating_note: form.rating_note.trim() || null,
-      ingredients: form.ingredients
+      ingredients: ingredients
         .filter((i) => i.ingredient_id)
         .map((i) => ({
           ingredient_id: i.ingredient_id,
@@ -413,6 +455,34 @@ export function RecipeForm({
           Cancelar
         </Button>
       </div>
+
+      {/* New ingredients confirmation dialog */}
+      <Dialog open={pendingNewIngredients.length > 0} onOpenChange={(open) => { if (!open) setPendingNewIngredients([]) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ingredientes nuevos</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p>
+              {pendingNewIngredients.length === 1
+                ? "Este ingrediente no existe aún en el catálogo:"
+                : `Estos ${pendingNewIngredients.length} ingredientes no existen aún en el catálogo:`}
+            </p>
+            <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+              {pendingNewIngredients.map((name) => <li key={name}>{name}</li>)}
+            </ul>
+            <p>¿Crearlos y guardar la receta, o cancelar para editarlos primero?</p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPendingNewIngredients([])}>
+              Volver a editar
+            </Button>
+            <Button onClick={handleConfirmCreateIngredients} disabled={saving}>
+              {saving ? "Creando…" : "Crear y guardar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </form>
   )
 }
