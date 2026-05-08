@@ -14,14 +14,16 @@ Return ONLY valid JSON with this exact structure:
   "ingredients": [
     { "name": "ingredient name", "quantity": number or null, "unit": "unit name in Spanish or null" }
   ],
-  "steps": ["step 1 description", "step 2 description"]
+  "steps": ["step 1 description", "step 2 description"],
+  "notes": "anything from the transcript that didn't fit the recipe structure (context, anecdotes, tips, personal notes, serving suggestions) — or null"
 }
 
 Rules:
 - Ingredient names should be in singular form in Spanish
 - Units should be the full Spanish word (e.g. "taza", "gramo", "cucharada")
 - If information is not mentioned, use null
-- Steps should be clear and actionable`
+- Steps should be clear and actionable
+- Capture in "notes" any content that doesn't map to title/description/cook_time/servings/ingredients/steps — colloquial context, personal anecdotes, tips, who taught the recipe, etc.`
 
 export async function POST(request: NextRequest) {
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })

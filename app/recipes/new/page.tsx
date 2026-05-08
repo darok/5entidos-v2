@@ -12,6 +12,8 @@ export default function NewRecipePage() {
   const [ingredients, setIngredients] = useState<Ingredient[]>([])
   const [units, setUnits] = useState<Unit[]>([])
   const [initialData, setInitialData] = useState<Partial<RecipeFormData> | undefined>(undefined)
+  const [fromAudio, setFromAudio] = useState(false)
+  const [audioNotes, setAudioNotes] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -31,6 +33,8 @@ export default function NewRecipePage() {
       setUnits(unitsData)
 
       if (audioData) {
+        setFromAudio(true)
+        setAudioNotes(audioData.notes ?? null)
         const prefill: Partial<RecipeFormData> = {
           title: audioData.title ?? "",
           description: audioData.description ?? "",
@@ -81,6 +85,8 @@ export default function NewRecipePage() {
         allTags={tags}
         allIngredients={ingredients}
         allUnits={units}
+        fromAudio={fromAudio}
+        audioNotes={audioNotes}
       />
     </div>
   )

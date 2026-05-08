@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { useAuth } from "@/components/providers"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
-import { PlusCircle, Settings, LogOut } from "lucide-react"
+import { PlusCircle, Settings, LogOut, Mic } from "lucide-react"
 
 // Top navigation bar — scroll-aware: taller with larger logo at page top, compact on scroll
 export function Header() {
@@ -57,6 +57,11 @@ export function Header() {
                 <Link href="/recipes/new">
                   <PlusCircle className="mr-1 h-4 w-4" />
                   Nueva receta
+                </Link>
+              </Button>
+              <Button asChild variant="ghost" size="icon">
+                <Link href="/recipes/audio" aria-label="Agregar receta por audio">
+                  <Mic className="h-4 w-4" />
                 </Link>
               </Button>
               <Button asChild variant="ghost" size="icon">

@@ -15,7 +15,7 @@ import { ImageUpload } from "@/components/image-upload"
 import { IngredientRow, type IngredientRowValue } from "@/components/ingredient-row"
 import { StepRow } from "@/components/step-row"
 import { RATING_LABELS } from "@/types"
-import { PlusCircle, X } from "lucide-react"
+import { PlusCircle, X, Pencil, Check } from "lucide-react"
 import type { Tag, Ingredient, Unit } from "@/types"
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -40,6 +40,8 @@ interface RecipeFormProps {
   allIngredients: Ingredient[]
   allUnits: Unit[]
   recipeId?: string  // present when editing
+  fromAudio?: boolean
+  audioNotes?: string | null
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -73,12 +75,17 @@ export function RecipeForm({
   allIngredients,
   allUnits,
   recipeId,
+  fromAudio,
+  audioNotes,
 }: RecipeFormProps) {
   const router = useRouter()
   const [form, setForm] = useState<RecipeFormData>({ ...defaultForm(), ...initialData })
   const [localIngredients, setLocalIngredients] = useState<Ingredient[]>(allIngredients)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showBanner, setShowBanner] = useState(true)
+  const [notesEditing, setNotesEditing] = useState(false)
+  const [notesText, setNotesText] = useState(audioNotes ?? "")
 
   function setField<K extends keyof RecipeFormData>(key: K, value: RecipeFormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -176,8 +183,27 @@ export function RecipeForm({
     }
   }
 
+  const newIngredientCount = form.ingredients.filter(
+    (i) => i.ingredient_id === "" && i.ingredient_name !== ""
+  ).length
+
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
+      {/* Audio warning banner */}
+      {fromAudio && showBanner && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-md px-4 py-3 flex items-start justify-between gap-3 text-sm">
+          <span>
+            Datos cargados desde audio — revisá los campos antes de guardar.
+            {newIngredientCount > 0 && (
+              <> <strong>{newIngredientCount} ingrediente{newIngredientCount !== 1 ? "s" : ""} nuevo{newIngredientCount !== 1 ? "s" : ""}</strong> serán creados al guardar.</>
+            )}
+          </span>
+          <button type="button" onClick={() => setShowBanner(false)} aria-label="Cerrar aviso" className="shrink-0 mt-0.5">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Basic fields */}
       <section className="space-y-4">
         <div className="space-y-2">
@@ -339,6 +365,42 @@ export function RecipeForm({
           Agregar paso
         </Button>
       </section>
+
+      {/* Audio notes — not saved, purely for reference */}
+      {audioNotes && (
+        <>
+          <Separator />
+          <section className="space-y-2">
+            <p className="text-sm font-medium text-muted-foreground">Notas del audio</p>
+            {notesEditing ? (
+              <div className="space-y-2">
+                <Textarea
+                  value={notesText}
+                  onChange={(e) => setNotesText(e.target.value)}
+                  rows={4}
+                  className="text-sm"
+                />
+                <Button type="button" variant="ghost" size="sm" onClick={() => setNotesEditing(false)}>
+                  <Check className="mr-1 h-3.5 w-3.5" />
+                  Listo
+                </Button>
+              </div>
+            ) : (
+              <div className="relative rounded-md border bg-muted/50 p-3 text-sm text-muted-foreground">
+                {notesText}
+                <button
+                  type="button"
+                  onClick={() => setNotesEditing(true)}
+                  aria-label="Editar notas"
+                  className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+          </section>
+        </>
+      )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 

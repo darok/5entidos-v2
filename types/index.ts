@@ -79,4 +79,5 @@ export interface ExtractedRecipe {
   servings: number | null
   ingredients: { name: string; quantity: number | null; unit: string | null }[]
   steps: string[]
+  notes?: string | null
 }

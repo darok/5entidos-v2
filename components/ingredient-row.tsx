@@ -9,6 +9,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { Trash2, PlusCircle } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import type { Ingredient, Unit } from "@/types"
 
 export interface IngredientRowValue {
@@ -87,7 +88,13 @@ export function IngredientRow({
           onChange={(e) => { setNameInput(e.target.value); setShowDropdown(true) }}
           onFocus={() => setShowDropdown(true)}
           placeholder="Ingrediente…"
+          className={value.ingredient_name && !value.ingredient_id ? "pr-16" : ""}
         />
+        {value.ingredient_name && !value.ingredient_id && (
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+            <Badge variant="secondary" className="text-xs px-1.5 py-0">Nuevo</Badge>
+          </span>
+        )}
         {showDropdown && (suggestions.length > 0 || showCreate) && (
           <div className="absolute z-20 mt-1 w-full rounded-md border bg-popover shadow-md">
             {suggestions.map((ing) => (
