@@ -24,11 +24,9 @@ export default async function EditRecipePage({ params }: Props) {
     title: recipe.title,
     description: recipe.description ?? "",
     image_url: recipe.image_url,
-    prep_time: recipe.prep_time != null ? String(recipe.prep_time) : "",
-    cook_time: recipe.cook_time != null ? String(recipe.cook_time) : "",
+    prep_time: recipe.prep_time ?? "",
     servings: recipe.servings != null ? String(recipe.servings) : "",
     rating: recipe.rating != null ? String(recipe.rating) : "",
-    rating_note: recipe.rating_note ?? "",
     ingredients: recipe.ingredients?.map((ri) => ({
       ingredient_id: ri.ingredient_id,
       ingredient_name: ri.ingredients.name,

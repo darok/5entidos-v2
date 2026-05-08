@@ -7,6 +7,7 @@ import {
   DialogDescription, DialogFooter,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { Trash2 } from "lucide-react"
 
 interface DeleteRecipeButtonProps {
   id: string
@@ -32,8 +33,8 @@ export function DeleteRecipeButton({ id }: DeleteRecipeButtonProps) {
 
   return (
     <>
-      <Button variant="destructive" size="sm" onClick={() => setOpen(true)}>
-        Eliminar
+      <Button variant="ghost" size="icon" className="mt-0.5 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => setOpen(true)} aria-label="Eliminar">
+        <Trash2 className="h-4 w-4" />
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

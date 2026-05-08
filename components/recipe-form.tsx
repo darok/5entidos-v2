@@ -6,9 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -21,6 +18,11 @@ import { RATING_LABELS } from "@/types"
 import { PlusCircle, X, Pencil, Check } from "lucide-react"
 import type { Tag, Ingredient, Unit } from "@/types"
 
+// ── Constants ─────────────────────────────────────────────────────
+
+const TIME_OPTIONS = ["0-30", "30-60", "60-120", "120+"] as const
+const SERVING_OPTIONS = ["2", "4", "6", "8"] as const
+
 // ── Types ─────────────────────────────────────────────────────────
 
 export interface RecipeFormData {
@@ -28,10 +30,8 @@ export interface RecipeFormData {
   description: string
   image_url: string | null
   prep_time: string
-  cook_time: string
   servings: string
   rating: string
-  rating_note: string
   ingredients: IngredientRowValue[]
   steps: string[]
   tag_ids: string[]
@@ -59,10 +59,8 @@ function defaultForm(): RecipeFormData {
     description: "",
     image_url: null,
     prep_time: "",
-    cook_time: "",
     servings: "",
     rating: "",
-    rating_note: "",
     ingredients: [emptyIngredient()],
     steps: [""],
     tag_ids: [],
@@ -87,6 +85,9 @@ export function RecipeForm({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showBanner, setShowBanner] = useState(true)
+  const [showCustomServings, setShowCustomServings] = useState(
+    () => !!initialData?.servings && !SERVING_OPTIONS.includes(initialData.servings as typeof SERVING_OPTIONS[number])
+  )
   const [notesEditing, setNotesEditing] = useState(false)
   const [notesText, setNotesText] = useState(audioNotes ?? "")
   const [pendingNewIngredients, setPendingNewIngredients] = useState<string[]>([])
@@ -182,11 +183,9 @@ export function RecipeForm({
       title: form.title.trim(),
       description: form.description.trim() || null,
       image_url: form.image_url,
-      prep_time: form.prep_time ? parseInt(form.prep_time) : null,
-      cook_time: form.cook_time ? parseInt(form.cook_time) : null,
+      prep_time: form.prep_time || null,
       servings: form.servings ? parseInt(form.servings) : null,
       rating: form.rating ? parseInt(form.rating) : null,
-      rating_note: form.rating_note.trim() || null,
       ingredients: ingredients
         .filter((i) => i.ingredient_id)
         .map((i) => ({
@@ -268,64 +267,82 @@ export function RecipeForm({
           />
         </div>
 
-        <ImageUpload value={form.image_url} onChange={(url) => setField("image_url", url)} />
+        <ImageUpload value={form.image_url} onChange={(url) => setField("image_url", url)} searchHint={form.title} />
 
         {/* Time + servings */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="prep_time">Prep (min)</Label>
-            <Input
-              id="prep_time"
-              type="number"
-              min={0}
-              value={form.prep_time}
-              onChange={(e) => setField("prep_time", e.target.value)}
-            />
+            <Label>Tiempo (min)</Label>
+            <div className="flex flex-wrap gap-2">
+              {TIME_OPTIONS.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setField("prep_time", form.prep_time === opt ? "" : opt)}
+                  className="focus:outline-none"
+                >
+                  <Badge variant={form.prep_time === opt ? "default" : "outline"} className="cursor-pointer">
+                    {opt}
+                  </Badge>
+                </button>
+              ))}
+            </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="cook_time">Cocción (min)</Label>
-            <Input
-              id="cook_time"
-              type="number"
-              min={0}
-              value={form.cook_time}
-              onChange={(e) => setField("cook_time", e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="servings">Porciones</Label>
-            <Input
-              id="servings"
-              type="number"
-              min={1}
-              value={form.servings}
-              onChange={(e) => setField("servings", e.target.value)}
-            />
+            <Label>Porciones</Label>
+            <div className="flex flex-wrap gap-2 items-center">
+              {SERVING_OPTIONS.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => { setField("servings", form.servings === opt ? "" : opt); setShowCustomServings(false) }}
+                  className="focus:outline-none"
+                >
+                  <Badge variant={!showCustomServings && form.servings === opt ? "default" : "outline"} className="cursor-pointer">
+                    {opt}
+                  </Badge>
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => { setShowCustomServings(true); setField("servings", "") }}
+                className="focus:outline-none"
+              >
+                <Badge variant={showCustomServings ? "default" : "outline"} className="cursor-pointer">Otro</Badge>
+              </button>
+              {showCustomServings && (
+                <Input
+                  type="number"
+                  min={1}
+                  value={form.servings}
+                  onChange={(e) => setField("servings", e.target.value)}
+                  className="w-20 h-7 text-sm"
+                  autoFocus
+                />
+              )}
+            </div>
           </div>
         </div>
 
         {/* Rating */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Calificación</Label>
-            <Select value={form.rating} onValueChange={(v) => setField("rating", v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Sin calificar" />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(RATING_LABELS).map(([val, label]) => (
-                  <SelectItem key={val} value={val}>{label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="rating_note">Nota de calificación</Label>
-            <Input
-              id="rating_note"
-              value={form.rating_note}
-              onChange={(e) => setField("rating_note", e.target.value)}
-            />
+        <div className="space-y-2">
+          <Label>Calificación</Label>
+          <div className="flex items-center gap-1">
+            {[1, 2, 3, 4].map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setField("rating", form.rating === String(n) ? "" : String(n))}
+                className="focus:outline-none"
+              >
+                <span className={`text-2xl leading-none ${parseInt(form.rating) >= n ? "text-amber-400" : "text-muted-foreground"}`}>
+                  ★
+                </span>
+              </button>
+            ))}
+            {form.rating && (
+              <span className="text-xs text-muted-foreground ml-2">{RATING_LABELS[parseInt(form.rating)]}</span>
+            )}
           </div>
         </div>
       </section>

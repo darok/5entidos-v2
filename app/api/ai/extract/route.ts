@@ -9,13 +9,12 @@ Return ONLY valid JSON with this exact structure:
 {
   "title": "recipe name",
   "description": "brief description or null",
-  "cook_time": total cooking time in minutes as integer or null,
   "servings": number of servings as integer or null,
   "ingredients": [
     { "name": "ingredient name", "quantity": number or null, "unit": "unit name in Spanish or null" }
   ],
   "steps": ["step 1 description", "step 2 description"],
-  "notes": "anything from the transcript that didn't fit the recipe structure (context, anecdotes, tips, personal notes, serving suggestions) — or null"
+  "notes": "anything from the transcript that didn't fit the recipe structure (context, anecdotes, tips, personal notes, serving suggestions, timing) — or null"
 }
 
 Rules:

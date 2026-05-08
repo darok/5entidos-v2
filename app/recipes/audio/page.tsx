@@ -196,7 +196,6 @@ export default function AudioPage() {
             <div className="rounded-md border p-4 space-y-3 text-sm">
               <p><span className="font-medium">Título:</span> {extracted.title}</p>
               {extracted.description && <p><span className="font-medium">Descripción:</span> {extracted.description}</p>}
-              {extracted.cook_time != null && <p><span className="font-medium">Tiempo:</span> {extracted.cook_time} min</p>}
               {extracted.servings != null && <p><span className="font-medium">Porciones:</span> {extracted.servings}</p>}
               {extracted.ingredients?.length > 0 && (
                 <div>

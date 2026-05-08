@@ -46,11 +46,11 @@ export function Header() {
       <div className="container mx-auto flex h-full items-center justify-between px-4">
         <Link href="/" className="hover:opacity-80 transition-opacity">
           <Image
-            src="/logo_full.png"
+            src={scrolled ? "/logo_icon.png" : "/logo_full.png"}
             alt="5entidos"
             width={200}
             height={200}
-            className={`w-auto transition-all duration-300 ${scrolled ? "h-12" : "h-24"}`}
+            className={`transition-all duration-300 ${scrolled ? "h-10 w-10" : "h-24 w-auto max-w-[96px]"}`}
             priority
           />
         </Link>

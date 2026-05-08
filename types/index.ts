@@ -3,11 +3,9 @@ export interface Recipe {
   title: string
   description: string | null
   image_url: string | null
-  prep_time: number | null
-  cook_time: number | null
+  prep_time: string | null
   servings: number | null
   rating: number | null
-  rating_note: string | null
   created_at: string
   updated_at: string
   ingredients?: RecipeIngredient[]
@@ -76,7 +74,6 @@ export const RATING_LABELS: Record<number, string> = {
 export interface ExtractedRecipe {
   title: string
   description: string | null
-  cook_time: number | null
   servings: number | null
   ingredients: { name: string; quantity: number | null; unit: string | null }[]
   steps: string[]

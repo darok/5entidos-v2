@@ -1,14 +1,13 @@
 import { notFound } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
-import { Clock, Users } from "lucide-react"
+import { Clock, Users, Pencil } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import * as db from "@/lib/db/recipes"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { RatingDisplay } from "@/components/rating-display"
-import { formatTime } from "@/lib/utils"
 import { ServingScaler } from "./serving-scaler"
 import { DeleteRecipeButton } from "./delete-recipe-button"
 import { ShareButton } from "@/components/share-button"
@@ -34,20 +33,26 @@ export default async function RecipeDetailPage({ params }: Props) {
     <div className="container mx-auto max-w-2xl px-4 py-8 space-y-8">
       {/* Header */}
       <div className="space-y-3">
-        <h1 className="text-3xl font-bold text-foreground">{recipe.title}</h1>
+        <div className="flex items-start gap-2">
+          <h1 className="text-3xl font-bold text-foreground flex-1">{recipe.title}</h1>
+          {isOwner && (
+            <>
+              <Button asChild variant="ghost" size="icon" className="mt-0.5 shrink-0">
+                <Link href={`/recipes/${recipe.id}/edit`} aria-label="Editar">
+                  <Pencil className="h-4 w-4" />
+                </Link>
+              </Button>
+              <DeleteRecipeButton id={recipe.id} />
+            </>
+          )}
+        </div>
 
         {/* Metrics row */}
         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
           {recipe.prep_time && (
             <span className="flex items-center gap-1">
               <Clock className="h-4 w-4" />
-              Prep: {formatTime(recipe.prep_time)}
-            </span>
-          )}
-          {recipe.cook_time && (
-            <span className="flex items-center gap-1">
-              <Clock className="h-4 w-4" />
-              Cocción: {formatTime(recipe.cook_time)}
+              {recipe.prep_time} min
             </span>
           )}
           {recipe.servings && (
@@ -67,23 +72,6 @@ export default async function RecipeDetailPage({ params }: Props) {
             ))}
           </div>
         )}
-
-        {recipe.rating_note && (
-          <p className="text-sm text-muted-foreground italic">{recipe.rating_note}</p>
-        )}
-
-        {/* Actions */}
-        <div className="flex flex-wrap gap-2 pt-1">
-          <ShareButton title={recipe.title} />
-          {isOwner && (
-            <>
-              <Button asChild variant="outline" size="sm">
-                <Link href={`/recipes/${recipe.id}/edit`}>Editar</Link>
-              </Button>
-              <DeleteRecipeButton id={recipe.id} />
-            </>
-          )}
-        </div>
       </div>
 
       {/* Image */}
@@ -135,6 +123,8 @@ export default async function RecipeDetailPage({ params }: Props) {
           </section>
         </>
       )}
+
+      <ShareButton title={recipe.title} />
     </div>
   )
 }

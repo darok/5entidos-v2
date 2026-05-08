@@ -46,11 +46,9 @@ export interface RecipePayload {
   title: string
   description?: string | null
   image_url?: string | null
-  prep_time?: number | null
-  cook_time?: number | null
+  prep_time?: string | null
   servings?: number | null
   rating?: number | null
-  rating_note?: string | null
 }
 
 export interface IngredientPayload {

@@ -1,14 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { Button } from "@/components/ui/button"
 import { Share2, Check } from "lucide-react"
 
 interface ShareButtonProps {
   title: string
 }
 
-// Share button: native share sheet on mobile, clipboard copy on desktop
+// Floating action button — share sheet on mobile, clipboard copy on desktop
 export function ShareButton({ title }: ShareButtonProps) {
   const [copied, setCopied] = useState(false)
 
@@ -24,11 +23,12 @@ export function ShareButton({ title }: ShareButtonProps) {
   }
 
   return (
-    <Button variant="outline" size="sm" onClick={handleShare}>
-      {copied
-        ? <Check className="mr-1.5 h-4 w-4" />
-        : <Share2 className="mr-1.5 h-4 w-4" />}
-      {copied ? "¡Copiado!" : "Compartir"}
-    </Button>
+    <button
+      onClick={handleShare}
+      aria-label="Compartir"
+      className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:opacity-90 transition-opacity flex items-center justify-center"
+    >
+      {copied ? <Check className="h-5 w-5" /> : <Share2 className="h-5 w-5" />}
+    </button>
   )
 }

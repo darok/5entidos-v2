@@ -38,7 +38,6 @@ export default function NewRecipePage() {
         const prefill: Partial<RecipeFormData> = {
           title: audioData.title ?? "",
           description: audioData.description ?? "",
-          cook_time: audioData.cook_time != null ? String(audioData.cook_time) : "",
           servings: audioData.servings != null ? String(audioData.servings) : "",
           ingredients: audioData.ingredients?.map((ing) => {
             const match = (ingredientsData as Ingredient[]).find(

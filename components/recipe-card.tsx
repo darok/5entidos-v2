@@ -4,7 +4,6 @@ import { Clock } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { RatingDisplay } from "@/components/rating-display"
-import { formatTime } from "@/lib/utils"
 import type { Recipe } from "@/types"
 
 interface RecipeCardProps {
@@ -40,10 +39,10 @@ export function RecipeCard({ recipe }: RecipeCardProps) {
           </h2>
 
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            {recipe.cook_time && (
+            {recipe.prep_time && (
               <span className="flex items-center gap-1">
                 <Clock className="h-3.5 w-3.5" />
-                {formatTime(recipe.cook_time)}
+                {recipe.prep_time} min
               </span>
             )}
             {recipe.servings && (
