@@ -61,6 +61,7 @@ export interface Unit {
   id: string
   name: string
   abbreviation: string
+  sort_order?: number
 }
 
 // Rating labels for the 4-tier system

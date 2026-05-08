@@ -34,7 +34,7 @@ export default async function RecipeDetailPage({ params }: Props) {
     <div className="container mx-auto max-w-2xl px-4 py-8 space-y-8">
       {/* Header */}
       <div className="space-y-3">
-        <h1 className="text-3xl font-bold">{recipe.title}</h1>
+        <h1 className="text-3xl font-bold text-foreground">{recipe.title}</h1>
 
         {/* Metrics row */}
         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">

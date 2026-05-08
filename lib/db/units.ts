@@ -1,16 +1,30 @@
 import { createClient } from "@/lib/supabase/server"
 import type { Unit } from "@/types"
 
-// Returns all units ordered alphabetically
+// Returns all units ordered by sort_order then name
 export async function getAll(): Promise<Unit[]> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from("units")
     .select("*")
+    .order("sort_order", { ascending: true })
     .order("name", { ascending: true })
 
   if (error) throw new Error(`getAll units failed: ${error.message}`)
   return data as Unit[]
+}
+
+// Batch-updates sort_order for multiple units (called after drag-and-drop reorder)
+export async function reorderUnits(items: { id: string; sort_order: number }[]): Promise<void> {
+  const supabase = createClient()
+  const results = await Promise.all(
+    items.map(({ id, sort_order }) =>
+      supabase.from("units").update({ sort_order }).eq("id", id)
+    )
+  )
+  for (const { error } of results) {
+    if (error) throw new Error(`reorderUnits failed: ${error.message}`)
+  }
 }
 
 // Creates a new unit

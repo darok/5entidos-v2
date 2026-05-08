@@ -264,7 +264,7 @@ export function RecipeForm({
             id="description"
             value={form.description}
             onChange={(e) => setField("description", e.target.value)}
-            rows={3}
+            rows={2}
           />
         </div>
 

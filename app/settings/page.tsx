@@ -9,7 +9,14 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter,
 } from "@/components/ui/dialog"
-import { Pencil, Trash2, PlusCircle, Check, X } from "lucide-react"
+import { Pencil, Trash2, PlusCircle, Check, X, GripVertical } from "lucide-react"
+import {
+  DndContext, closestCenter, type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext, verticalListSortingStrategy, arrayMove, useSortable,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import type { Tag, TagType, Ingredient, Unit } from "@/types"
 
 // ── Inline edit row ───────────────────────────────────────────────
@@ -239,13 +246,66 @@ function TagsTab() {
   )
 }
 
-// ── Units tab ─────────────────────────────────────────────────────
+// ── Units tab — sortable rows ─────────────────────────────────────
+
+interface SortableUnitRowProps {
+  unit: Unit
+  editingId: string | null
+  onEdit: (id: string) => void
+  onSave: (id: string, name: string) => Promise<void>
+  onCancelEdit: () => void
+  onDelete: (unit: Unit) => void
+}
+
+function SortableUnitRow({ unit, editingId, onEdit, onSave, onCancelEdit, onDelete }: SortableUnitRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: unit.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <li ref={setNodeRef} style={style} className="flex items-center gap-2 px-4 py-2">
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab text-muted-foreground hover:text-foreground touch-none"
+        aria-label="Arrastrar para reordenar"
+        type="button"
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      {editingId === unit.id ? (
+        <EditRow
+          value={unit.name}
+          onSave={async (name) => { await onSave(unit.id, name) }}
+          onCancel={onCancelEdit}
+        />
+      ) : (
+        <>
+          <span className="flex-1 text-sm">{unit.name}</span>
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEdit(unit.id)}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => onDelete(unit)}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </>
+      )}
+    </li>
+  )
+}
 
 function UnitsTab() {
   const router = useRouter()
   const [units, setUnits] = useState<Unit[]>([])
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [deleteItem, setDeleteItem] = useState<Unit | null>(null)
+  const [newName, setNewName] = useState("")
+  const [adding, setAdding] = useState(false)
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => { loadData() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadData() {
     const data = await fetch("/api/units").then((r) => r.json())
@@ -253,30 +313,88 @@ function UnitsTab() {
     router.refresh()
   }
 
-  async function handleCreate(name: string) {
-    await fetch("/api/units", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, abbreviation: name }) })
+  async function handleCreate() {
+    if (!newName.trim()) return
+    setAdding(true)
+    await fetch("/api/units", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newName.trim(), abbreviation: newName.trim() }) })
+    setNewName("")
+    setAdding(false)
     await loadData()
   }
 
   async function handleUpdate(id: string, name: string) {
     const unit = units.find((u) => u.id === id)
     await fetch(`/api/units/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, abbreviation: unit?.abbreviation ?? name }) })
+    setEditingId(null)
     await loadData()
   }
 
   async function handleDelete(id: string) {
     await fetch(`/api/units/${id}`, { method: "DELETE" })
+    setDeleteItem(null)
     await loadData()
   }
 
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = units.findIndex((u) => u.id === active.id)
+    const newIndex = units.findIndex((u) => u.id === over.id)
+    const reordered = arrayMove(units, oldIndex, newIndex)
+    setUnits(reordered)
+    await fetch("/api/units/reorder", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: reordered.map((u, i) => ({ id: u.id, sort_order: i })) }),
+    })
+  }
+
   return (
-    <CatalogList
-      items={units}
-      onCreate={handleCreate}
-      onUpdate={handleUpdate}
-      onDelete={handleDelete}
-      addLabel="Agregar unidad"
-    />
+    <div className="space-y-3">
+      <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={units.map((u) => u.id)} strategy={verticalListSortingStrategy}>
+          <ul className="divide-y rounded-md border">
+            {units.length === 0 && (
+              <li className="px-4 py-3 text-sm text-muted-foreground">Sin elementos</li>
+            )}
+            {units.map((u) => (
+              <SortableUnitRow
+                key={u.id}
+                unit={u}
+                editingId={editingId}
+                onEdit={setEditingId}
+                onSave={handleUpdate}
+                onCancelEdit={() => setEditingId(null)}
+                onDelete={setDeleteItem}
+              />
+            ))}
+          </ul>
+        </SortableContext>
+      </DndContext>
+
+      <div className="flex gap-2">
+        <Input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleCreate() }}
+          placeholder="Nueva unidad…"
+          className="h-8 text-sm"
+        />
+        <Button size="sm" variant="outline" onClick={handleCreate} disabled={adding || !newName.trim()}>
+          <PlusCircle className="mr-1 h-3.5 w-3.5" />
+          Agregar unidad
+        </Button>
+      </div>
+
+      {deleteItem && (
+        <DeleteDialog
+          open={!!deleteItem}
+          name={deleteItem.name}
+          onConfirm={async () => handleDelete(deleteItem.id)}
+          onCancel={() => setDeleteItem(null)}
+        />
+      )}
+    </div>
   )
 }
 

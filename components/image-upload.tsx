@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ImageIcon, Upload } from "lucide-react"
+import { Upload } from "lucide-react"
 
 interface ImageUploadProps {
   value: string | null
@@ -76,7 +76,7 @@ export function ImageUpload({ value, onChange }: ImageUploadProps) {
       </Tabs>
 
       {/* Preview */}
-      {value ? (
+      {value && (
         <div className="relative aspect-video w-full overflow-hidden rounded-md border bg-muted">
           <Image src={value} alt="Preview" fill className="object-cover" />
           <Button
@@ -88,10 +88,6 @@ export function ImageUpload({ value, onChange }: ImageUploadProps) {
           >
             Quitar
           </Button>
-        </div>
-      ) : (
-        <div className="aspect-video w-full rounded-md border border-dashed bg-muted flex items-center justify-center">
-          <ImageIcon className="h-8 w-8 text-muted-foreground" />
         </div>
       )}
     </div>

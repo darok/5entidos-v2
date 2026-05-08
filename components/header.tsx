@@ -19,7 +19,12 @@ export function Header() {
 
   useEffect(() => {
     function onScroll() {
-      setScrolled(window.scrollY > 20)
+      const y = window.scrollY
+      setScrolled(prev => {
+        if (!prev && y > 60) return true
+        if (prev && y < 20) return false
+        return prev
+      })
     }
     window.addEventListener("scroll", onScroll, { passive: true })
     return () => window.removeEventListener("scroll", onScroll)
@@ -35,7 +40,7 @@ export function Header() {
   return (
     <header
       className={`sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 transition-all duration-300 ${
-        scrolled ? "h-14" : "h-24"
+        scrolled ? "h-16" : "h-32"
       }`}
     >
       <div className="container mx-auto flex h-full items-center justify-between px-4">
@@ -45,7 +50,7 @@ export function Header() {
             alt="5entidos"
             width={200}
             height={200}
-            className={`w-auto transition-all duration-300 ${scrolled ? "h-8" : "h-16"}`}
+            className={`w-auto transition-all duration-300 ${scrolled ? "h-12" : "h-24"}`}
             priority
           />
         </Link>

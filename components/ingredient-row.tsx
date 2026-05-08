@@ -87,6 +87,12 @@ export function IngredientRow({
           value={nameInput}
           onChange={(e) => { setNameInput(e.target.value); setShowDropdown(true) }}
           onFocus={() => setShowDropdown(true)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return
+            e.preventDefault()
+            if (showCreate) { handleCreate() }
+            else if (suggestions.length > 0) { selectIngredient(suggestions[0]) }
+          }}
           placeholder="Ingrediente…"
           className={value.ingredient_name && !value.ingredient_id ? "pr-16" : ""}
         />

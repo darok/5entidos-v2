@@ -1,20 +1,13 @@
-import { Badge } from "@/components/ui/badge"
-import { RATING_LABELS } from "@/types"
-
 interface RatingDisplayProps {
   rating: number | null
 }
 
-// Renders a colored badge with the rating label
+// Renders filled/hollow stars for a 1–4 rating
 export function RatingDisplay({ rating }: RatingDisplayProps) {
   if (!rating) return null
-  const label = RATING_LABELS[rating]
-  if (!label) return null
-
-  const variant =
-    rating === 4 ? "default" :
-    rating === 3 ? "secondary" :
-    "outline"
-
-  return <Badge variant={variant}>{label}</Badge>
+  return (
+    <span className="text-amber-400 text-sm tracking-tight" aria-label={`${rating} de 4`}>
+      {"★".repeat(rating)}{"☆".repeat(4 - rating)}
+    </span>
+  )
 }
