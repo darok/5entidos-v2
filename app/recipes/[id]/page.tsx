@@ -11,6 +11,7 @@ import { RatingDisplay } from "@/components/rating-display"
 import { formatTime } from "@/lib/utils"
 import { ServingScaler } from "./serving-scaler"
 import { DeleteRecipeButton } from "./delete-recipe-button"
+import { ShareButton } from "@/components/share-button"
 
 interface Props {
   params: { id: string }
@@ -71,15 +72,18 @@ export default async function RecipeDetailPage({ params }: Props) {
           <p className="text-sm text-muted-foreground italic">{recipe.rating_note}</p>
         )}
 
-        {/* Owner actions */}
-        {isOwner && (
-          <div className="flex gap-2 pt-1">
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/recipes/${recipe.id}/edit`}>Editar</Link>
-            </Button>
-            <DeleteRecipeButton id={recipe.id} />
-          </div>
-        )}
+        {/* Actions */}
+        <div className="flex flex-wrap gap-2 pt-1">
+          <ShareButton title={recipe.title} />
+          {isOwner && (
+            <>
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/recipes/${recipe.id}/edit`}>Editar</Link>
+              </Button>
+              <DeleteRecipeButton id={recipe.id} />
+            </>
+          )}
+        </div>
       </div>
 
       {/* Image */}
