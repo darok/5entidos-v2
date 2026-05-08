@@ -4,8 +4,7 @@ import { Providers } from "@/components/providers"
 import { Header } from "@/components/header"
 
 export const metadata: Metadata = {
-  title: "Recetario",
-  description: "Recetas personales",
+  title: "5entidos",
 }
 
 export default function RootLayout({

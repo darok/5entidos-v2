@@ -1,5 +1,7 @@
 "use client"
 
+import { useState, useEffect } from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -8,15 +10,20 @@ import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { PlusCircle, Settings, LogOut } from "lucide-react"
 
-interface HeaderProps {
-  title?: string
-}
-
-// Top navigation bar — shows owner actions when logged in
-export function Header({ title = "Recetario" }: HeaderProps) {
+// Top navigation bar — scroll-aware: taller with larger logo at page top, compact on scroll
+export function Header() {
   const { user } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
+  const [scrolled, setScrolled] = useState(false)
+
+  useEffect(() => {
+    function onScroll() {
+      setScrolled(window.scrollY > 20)
+    }
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => window.removeEventListener("scroll", onScroll)
+  }, [])
 
   async function handleLogout() {
     const supabase = createClient()
@@ -26,10 +33,21 @@ export function Header({ title = "Recetario" }: HeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto flex h-14 items-center justify-between px-4">
-        <Link href="/" className="text-lg font-semibold tracking-tight hover:opacity-80">
-          {title}
+    <header
+      className={`sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 transition-all duration-300 ${
+        scrolled ? "h-14" : "h-24"
+      }`}
+    >
+      <div className="container mx-auto flex h-full items-center justify-between px-4">
+        <Link href="/" className="hover:opacity-80 transition-opacity">
+          <Image
+            src="/logo_full.png"
+            alt="5entidos"
+            width={200}
+            height={200}
+            className={`w-auto transition-all duration-300 ${scrolled ? "h-8" : "h-16"}`}
+            priority
+          />
         </Link>
 
         <div className="flex items-center gap-2">
