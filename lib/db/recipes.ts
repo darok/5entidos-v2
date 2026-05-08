@@ -34,7 +34,10 @@ export async function getById(id: string): Promise<Recipe | null> {
     if (error.code === "PGRST116") return null
     throw new Error(`getById recipe failed: ${error.message}`)
   }
-  return data as Recipe
+
+  // Supabase returns join results under the table name; remap to match the Recipe type
+  const { recipe_ingredients, recipe_steps, ...rest } = data as Record<string, unknown>
+  return { ...rest, ingredients: recipe_ingredients, steps: recipe_steps } as Recipe
 }
 
 // ── Write ────────────────────────────────────────────────────────
