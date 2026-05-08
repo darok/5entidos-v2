@@ -29,9 +29,10 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
   const [urlError, setUrlError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState(searchHint ?? "")
   const [searchResults, setSearchResults] = useState<UnsplashResult[]>([])
+  const [searchError, setSearchError] = useState<string | null>(null)
   const [searching, setSearching] = useState(false)
   const [pickingPhoto, setPickingPhoto] = useState(false)
-  const [searchPage, setSearchPage] = useState(1)
+  const [searchPage, setSearchPage] = useState(0)
   const [activeTab, setActiveTab] = useState("upload")
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -81,14 +82,20 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
   async function handleSearch(page = 1) {
     if (!searchQuery.trim()) return
     setSearching(true)
+    setSearchError(null)
     setSearchPage(page)
     if (page === 1) setSearchResults([])
     try {
       const res = await fetch(`/api/unsplash/search?query=${encodeURIComponent(searchQuery.trim())}&page=${page}`)
       const data = await res.json()
-      const results = Array.isArray(data) ? data : []
-      if (page === 1) setSearchResults(results)
-      else setSearchResults(prev => [...prev, ...results])
+      if (!Array.isArray(data)) {
+        setSearchError(data.error ?? "Error al buscar fotos.")
+        return
+      }
+      if (page === 1) setSearchResults(data)
+      else setSearchResults(prev => [...prev, ...data])
+    } catch {
+      setSearchError("Error de red al buscar fotos.")
     } finally {
       setSearching(false)
     }
@@ -108,7 +115,6 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
         setSearchResults([])
         setActiveTab("upload")
       }
-      fetch(`/api/unsplash/search?trigger=${encodeURIComponent(photo.downloadUrl)}`).catch(() => {})
     } finally {
       setPickingPhoto(false)
     }
@@ -166,6 +172,14 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
             </Button>
           </div>
 
+          {searchError && (
+            <p className="text-sm text-destructive">{searchError}</p>
+          )}
+
+          {!searchError && searchPage > 0 && !searching && searchResults.length === 0 && (
+            <p className="text-sm text-muted-foreground">Sin resultados para esta búsqueda.</p>
+          )}
+
           {searchResults.length > 0 && (
             <>
               <div className="grid grid-cols-3 gap-2">
@@ -194,6 +208,7 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
               </Button>
             </>
           )}
+
           {pickingPhoto && <p className="text-sm text-muted-foreground">Cargando foto…</p>}
         </TabsContent>
 
