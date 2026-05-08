@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/Dario Kalmus/Mi unidad/DKCODE/Sandworm/5entidos/**)",
+      "PowerShell(ls \"c:\\\\Users\\\\Dario Kalmus\\\\Mi unidad\\\\DKCODE\\\\Sandworm\\\\5entidos-v2\" -Force -File | Where-Object { $_.Name -match \"\\\\.env\" })"
+    ]
+  }
+}

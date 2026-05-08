@@ -1,0 +1,341 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter,
+} from "@/components/ui/dialog"
+import { Pencil, Trash2, PlusCircle, Check, X } from "lucide-react"
+import type { Tag, TagType, Ingredient, Unit } from "@/types"
+
+// ── Inline edit row ───────────────────────────────────────────────
+
+interface EditRowProps {
+  value: string
+  onSave: (name: string) => Promise<void>
+  onCancel: () => void
+}
+
+function EditRow({ value, onSave, onCancel }: EditRowProps) {
+  const [name, setName] = useState(value)
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    if (!name.trim()) return
+    setSaving(true)
+    await onSave(name.trim())
+    setSaving(false)
+  }
+
+  return (
+    <div className="flex gap-2 items-center">
+      <Input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onCancel() }}
+        className="h-8 text-sm"
+        autoFocus
+      />
+      <Button size="icon" variant="ghost" onClick={handleSave} disabled={saving} className="h-8 w-8">
+        <Check className="h-4 w-4 text-green-600" />
+      </Button>
+      <Button size="icon" variant="ghost" onClick={onCancel} className="h-8 w-8">
+        <X className="h-4 w-4 text-muted-foreground" />
+      </Button>
+    </div>
+  )
+}
+
+// ── Delete confirm dialog ─────────────────────────────────────────
+
+interface DeleteDialogProps {
+  open: boolean
+  name: string
+  onConfirm: () => Promise<void>
+  onCancel: () => void
+}
+
+function DeleteDialog({ open, name, onConfirm, onCancel }: DeleteDialogProps) {
+  const [loading, setLoading] = useState(false)
+
+  async function handleConfirm() {
+    setLoading(true)
+    await onConfirm()
+    setLoading(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onCancel() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>¿Eliminar &quot;{name}&quot;?</DialogTitle>
+          <DialogDescription>Esta acción no se puede deshacer.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel} disabled={loading}>Cancelar</Button>
+          <Button variant="destructive" onClick={handleConfirm} disabled={loading}>
+            {loading ? "Eliminando…" : "Eliminar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Generic catalog list (name-only items) ────────────────────────
+
+interface CatalogItem { id: string; name: string }
+
+interface CatalogListProps {
+  items: CatalogItem[]
+  onUpdate: (id: string, name: string) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+  onCreate: (name: string) => Promise<void>
+  addLabel?: string
+}
+
+function CatalogList({ items, onUpdate, onDelete, onCreate, addLabel = "Agregar" }: CatalogListProps) {
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [deleteItem, setDeleteItem] = useState<CatalogItem | null>(null)
+  const [newName, setNewName] = useState("")
+  const [adding, setAdding] = useState(false)
+
+  async function handleCreate() {
+    if (!newName.trim()) return
+    setAdding(true)
+    await onCreate(newName.trim())
+    setNewName("")
+    setAdding(false)
+  }
+
+  return (
+    <div className="space-y-3">
+      <ul className="divide-y rounded-md border">
+        {items.length === 0 && (
+          <li className="px-4 py-3 text-sm text-muted-foreground">Sin elementos</li>
+        )}
+        {items.map((item) => (
+          <li key={item.id} className="flex items-center gap-2 px-4 py-2">
+            {editingId === item.id ? (
+              <EditRow
+                value={item.name}
+                onSave={async (name) => { await onUpdate(item.id, name); setEditingId(null) }}
+                onCancel={() => setEditingId(null)}
+              />
+            ) : (
+              <>
+                <span className="flex-1 text-sm">{item.name}</span>
+                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingId(item.id)}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => setDeleteItem(item)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      <div className="flex gap-2">
+        <Input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleCreate() }}
+          placeholder="Nuevo nombre…"
+          className="h-8 text-sm"
+        />
+        <Button size="sm" variant="outline" onClick={handleCreate} disabled={adding || !newName.trim()}>
+          <PlusCircle className="mr-1 h-3.5 w-3.5" />
+          {addLabel}
+        </Button>
+      </div>
+
+      {deleteItem && (
+        <DeleteDialog
+          open={!!deleteItem}
+          name={deleteItem.name}
+          onConfirm={async () => { await onDelete(deleteItem.id); setDeleteItem(null) }}
+          onCancel={() => setDeleteItem(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Tags tab ─────────────────────────────────────────────────────
+
+function TagsTab() {
+  const router = useRouter()
+  const [tags, setTags] = useState<Tag[]>([])
+  const [tagTypes, setTagTypes] = useState<TagType[]>([])
+
+  useEffect(() => { loadData() }, [])
+
+  async function loadData() {
+    const [t, tt] = await Promise.all([fetch("/api/tags").then((r) => r.json()), fetch("/api/tag-types").then((r) => r.json())])
+    setTags(t)
+    setTagTypes(tt)
+    router.refresh()
+  }
+
+  async function handleTagCreate(name: string) {
+    await fetch("/api/tags", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) })
+    await loadData()
+  }
+
+  async function handleTagUpdate(id: string, name: string) {
+    await fetch(`/api/tags/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) })
+    await loadData()
+  }
+
+  async function handleTagDelete(id: string) {
+    await fetch(`/api/tags/${id}`, { method: "DELETE" })
+    await loadData()
+  }
+
+  async function handleTypeCreate(name: string) {
+    await fetch("/api/tag-types", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) })
+    await loadData()
+  }
+
+  async function handleTypeUpdate(id: string, name: string) {
+    await fetch(`/api/tag-types/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) })
+    await loadData()
+  }
+
+  async function handleTypeDelete(id: string) {
+    await fetch(`/api/tag-types/${id}`, { method: "DELETE" })
+    await loadData()
+  }
+
+  return (
+    <div className="space-y-8">
+      <div className="space-y-3">
+        <h3 className="font-semibold">Tags</h3>
+        <CatalogList
+          items={tags}
+          onCreate={handleTagCreate}
+          onUpdate={handleTagUpdate}
+          onDelete={handleTagDelete}
+          addLabel="Agregar tag"
+        />
+      </div>
+      <div className="space-y-3">
+        <h3 className="font-semibold">Tipos de tag</h3>
+        <CatalogList
+          items={tagTypes}
+          onCreate={handleTypeCreate}
+          onUpdate={handleTypeUpdate}
+          onDelete={handleTypeDelete}
+          addLabel="Agregar tipo"
+        />
+      </div>
+    </div>
+  )
+}
+
+// ── Units tab ─────────────────────────────────────────────────────
+
+function UnitsTab() {
+  const router = useRouter()
+  const [units, setUnits] = useState<Unit[]>([])
+
+  useEffect(() => { loadData() }, [])
+
+  async function loadData() {
+    const data = await fetch("/api/units").then((r) => r.json())
+    setUnits(data)
+    router.refresh()
+  }
+
+  async function handleCreate(name: string) {
+    await fetch("/api/units", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, abbreviation: name }) })
+    await loadData()
+  }
+
+  async function handleUpdate(id: string, name: string) {
+    const unit = units.find((u) => u.id === id)
+    await fetch(`/api/units/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, abbreviation: unit?.abbreviation ?? name }) })
+    await loadData()
+  }
+
+  async function handleDelete(id: string) {
+    await fetch(`/api/units/${id}`, { method: "DELETE" })
+    await loadData()
+  }
+
+  return (
+    <CatalogList
+      items={units}
+      onCreate={handleCreate}
+      onUpdate={handleUpdate}
+      onDelete={handleDelete}
+      addLabel="Agregar unidad"
+    />
+  )
+}
+
+// ── Ingredients tab ───────────────────────────────────────────────
+
+function IngredientsTab() {
+  const router = useRouter()
+  const [ingredients, setIngredients] = useState<Ingredient[]>([])
+
+  useEffect(() => { loadData() }, [])
+
+  async function loadData() {
+    const data = await fetch("/api/ingredients").then((r) => r.json())
+    setIngredients(data)
+    router.refresh()
+  }
+
+  async function handleCreate(name: string) {
+    await fetch("/api/ingredients", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) })
+    await loadData()
+  }
+
+  async function handleUpdate(id: string, name: string) {
+    await fetch(`/api/ingredients/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) })
+    await loadData()
+  }
+
+  async function handleDelete(id: string) {
+    await fetch(`/api/ingredients/${id}`, { method: "DELETE" })
+    await loadData()
+  }
+
+  return (
+    <CatalogList
+      items={ingredients}
+      onCreate={handleCreate}
+      onUpdate={handleUpdate}
+      onDelete={handleDelete}
+      addLabel="Agregar ingrediente"
+    />
+  )
+}
+
+// ── Page ──────────────────────────────────────────────────────────
+
+export default function SettingsPage() {
+  return (
+    <div className="container max-w-2xl py-8 space-y-6">
+      <h1 className="text-2xl font-bold">Configuración</h1>
+      <Tabs defaultValue="tags">
+        <TabsList>
+          <TabsTrigger value="tags">Tags</TabsTrigger>
+          <TabsTrigger value="units">Unidades</TabsTrigger>
+          <TabsTrigger value="ingredients">Ingredientes</TabsTrigger>
+        </TabsList>
+        <TabsContent value="tags" className="pt-4"><TagsTab /></TabsContent>
+        <TabsContent value="units" className="pt-4"><UnitsTab /></TabsContent>
+        <TabsContent value="ingredients" className="pt-4"><IngredientsTab /></TabsContent>
+      </Tabs>
+    </div>
+  )
+}

@@ -1,0 +1,356 @@
+"use client"
+
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { ImageUpload } from "@/components/image-upload"
+import { IngredientRow, type IngredientRowValue } from "@/components/ingredient-row"
+import { StepRow } from "@/components/step-row"
+import { RATING_LABELS } from "@/types"
+import { PlusCircle, X } from "lucide-react"
+import type { Tag, Ingredient, Unit } from "@/types"
+
+// ── Types ─────────────────────────────────────────────────────────
+
+export interface RecipeFormData {
+  title: string
+  description: string
+  image_url: string | null
+  prep_time: string
+  cook_time: string
+  servings: string
+  rating: string
+  rating_note: string
+  ingredients: IngredientRowValue[]
+  steps: string[]
+  tag_ids: string[]
+}
+
+interface RecipeFormProps {
+  initialData?: Partial<RecipeFormData>
+  allTags: Tag[]
+  allIngredients: Ingredient[]
+  allUnits: Unit[]
+  recipeId?: string  // present when editing
+}
+
+// ── Helpers ───────────────────────────────────────────────────────
+
+function emptyIngredient(): IngredientRowValue {
+  return { ingredient_id: "", ingredient_name: "", quantity: "", unit_id: "", optional: false }
+}
+
+function defaultForm(): RecipeFormData {
+  return {
+    title: "",
+    description: "",
+    image_url: null,
+    prep_time: "",
+    cook_time: "",
+    servings: "",
+    rating: "",
+    rating_note: "",
+    ingredients: [emptyIngredient()],
+    steps: [""],
+    tag_ids: [],
+  }
+}
+
+// ── Component ─────────────────────────────────────────────────────
+
+// Shared form for creating and editing recipes
+export function RecipeForm({
+  initialData,
+  allTags,
+  allIngredients,
+  allUnits,
+  recipeId,
+}: RecipeFormProps) {
+  const router = useRouter()
+  const [form, setForm] = useState<RecipeFormData>({ ...defaultForm(), ...initialData })
+  const [localIngredients, setLocalIngredients] = useState<Ingredient[]>(allIngredients)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function setField<K extends keyof RecipeFormData>(key: K, value: RecipeFormData[K]) {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  function toggleTag(id: string) {
+    setField(
+      "tag_ids",
+      form.tag_ids.includes(id)
+        ? form.tag_ids.filter((t) => t !== id)
+        : [...form.tag_ids, id]
+    )
+  }
+
+  function updateIngredient(index: number, value: IngredientRowValue) {
+    const next = [...form.ingredients]
+    next[index] = value
+    setField("ingredients", next)
+  }
+
+  function removeIngredient(index: number) {
+    setField("ingredients", form.ingredients.filter((_, i) => i !== index))
+  }
+
+  function updateStep(index: number, value: string) {
+    const next = [...form.steps]
+    next[index] = value
+    setField("steps", next)
+  }
+
+  function removeStep(index: number) {
+    setField("steps", form.steps.filter((_, i) => i !== index))
+  }
+
+  async function createIngredient(name: string): Promise<Ingredient> {
+    const res = await fetch("/api/ingredients", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    })
+    const ing = await res.json()
+    setLocalIngredients((prev) => [...prev, ing].sort((a, b) => a.name.localeCompare(b.name)))
+    return ing
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setSaving(true)
+
+    const payload = {
+      title: form.title.trim(),
+      description: form.description.trim() || null,
+      image_url: form.image_url,
+      prep_time: form.prep_time ? parseInt(form.prep_time) : null,
+      cook_time: form.cook_time ? parseInt(form.cook_time) : null,
+      servings: form.servings ? parseInt(form.servings) : null,
+      rating: form.rating ? parseInt(form.rating) : null,
+      rating_note: form.rating_note.trim() || null,
+      ingredients: form.ingredients
+        .filter((i) => i.ingredient_id)
+        .map((i) => ({
+          ingredient_id: i.ingredient_id,
+          quantity: i.quantity ? parseFloat(i.quantity) : null,
+          unit_id: i.unit_id || null,
+          optional: i.optional,
+        })),
+      steps: form.steps
+        .map((s, idx) => ({ step_number: idx + 1, description: s.trim() }))
+        .filter((s) => s.description),
+      tag_ids: form.tag_ids,
+    }
+
+    try {
+      const url = recipeId ? `/api/recipes/${recipeId}` : "/api/recipes"
+      const method = recipeId ? "PUT" : "POST"
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error ?? "Error al guardar")
+      }
+
+      const data = await res.json()
+      const id = recipeId ?? data.id
+      router.push(`/recipes/${id}`)
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error desconocido")
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-8">
+      {/* Basic fields */}
+      <section className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="title">Título *</Label>
+          <Input
+            id="title"
+            value={form.title}
+            onChange={(e) => setField("title", e.target.value)}
+            required
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="description">Descripción</Label>
+          <Textarea
+            id="description"
+            value={form.description}
+            onChange={(e) => setField("description", e.target.value)}
+            rows={3}
+          />
+        </div>
+
+        <ImageUpload value={form.image_url} onChange={(url) => setField("image_url", url)} />
+
+        {/* Time + servings */}
+        <div className="grid grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="prep_time">Prep (min)</Label>
+            <Input
+              id="prep_time"
+              type="number"
+              min={0}
+              value={form.prep_time}
+              onChange={(e) => setField("prep_time", e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="cook_time">Cocción (min)</Label>
+            <Input
+              id="cook_time"
+              type="number"
+              min={0}
+              value={form.cook_time}
+              onChange={(e) => setField("cook_time", e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="servings">Porciones</Label>
+            <Input
+              id="servings"
+              type="number"
+              min={1}
+              value={form.servings}
+              onChange={(e) => setField("servings", e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Rating */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Calificación</Label>
+            <Select value={form.rating} onValueChange={(v) => setField("rating", v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sin calificar" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(RATING_LABELS).map(([val, label]) => (
+                  <SelectItem key={val} value={val}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="rating_note">Nota de calificación</Label>
+            <Input
+              id="rating_note"
+              value={form.rating_note}
+              onChange={(e) => setField("rating_note", e.target.value)}
+            />
+          </div>
+        </div>
+      </section>
+
+      <Separator />
+
+      {/* Tags */}
+      {allTags.length > 0 && (
+        <section className="space-y-3">
+          <Label>Tags</Label>
+          <div className="flex flex-wrap gap-2">
+            {allTags.map((tag) => (
+              <button key={tag.id} type="button" onClick={() => toggleTag(tag.id)} className="focus:outline-none">
+                <Badge
+                  variant={form.tag_ids.includes(tag.id) ? "default" : "outline"}
+                  className="cursor-pointer"
+                >
+                  {tag.name}
+                  {form.tag_ids.includes(tag.id) && <X className="ml-1 h-3 w-3" />}
+                </Badge>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <Separator />
+
+      {/* Ingredients */}
+      <section className="space-y-3">
+        <Label>Ingredientes</Label>
+        <div className="space-y-3">
+          {form.ingredients.map((ing, i) => (
+            <IngredientRow
+              key={i}
+              value={ing}
+              allIngredients={localIngredients}
+              allUnits={allUnits}
+              onChange={(v) => updateIngredient(i, v)}
+              onRemove={() => removeIngredient(i)}
+              onCreateIngredient={createIngredient}
+            />
+          ))}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setField("ingredients", [...form.ingredients, emptyIngredient()])}
+        >
+          <PlusCircle className="mr-1 h-4 w-4" />
+          Agregar ingrediente
+        </Button>
+      </section>
+
+      <Separator />
+
+      {/* Steps */}
+      <section className="space-y-3">
+        <Label>Pasos</Label>
+        <div className="space-y-3">
+          {form.steps.map((step, i) => (
+            <StepRow
+              key={i}
+              index={i}
+              value={step}
+              onChange={(v) => updateStep(i, v)}
+              onRemove={() => removeStep(i)}
+            />
+          ))}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setField("steps", [...form.steps, ""])}
+        >
+          <PlusCircle className="mr-1 h-4 w-4" />
+          Agregar paso
+        </Button>
+      </section>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {/* Actions */}
+      <div className="flex gap-3 pb-8">
+        <Button type="submit" disabled={saving}>
+          {saving ? "Guardando…" : "Guardar"}
+        </Button>
+        <Button type="button" variant="outline" onClick={() => router.back()}>
+          Cancelar
+        </Button>
+      </div>
+    </form>
+  )
+}
