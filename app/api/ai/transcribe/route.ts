@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const formData = await request.formData()
-    const audio = formData.get("audio") as File | null
+    const audio = (formData.get("file") ?? formData.get("audio")) as File | null
     if (!audio) return NextResponse.json({ error: "No audio file provided" }, { status: 400 })
 
     const transcription = await openai.audio.transcriptions.create({
