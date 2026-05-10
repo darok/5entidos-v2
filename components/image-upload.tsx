@@ -1,10 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import Image from "next/image"
+import Cropper from "react-easy-crop"
+import type { Area } from "react-easy-crop"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { Slider } from "@/components/ui/slider"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Upload, Search, RefreshCw } from "lucide-react"
 
@@ -21,8 +24,31 @@ interface ImageUploadProps {
   searchHint?: string
 }
 
-// Lets the user upload a file, enter an image URL (stored to Supabase), or search Unsplash
+// Extract the visible cropped area from an image URL into a Blob
+async function getCroppedBlob(src: string, pixels: Area): Promise<Blob> {
+  const img = document.createElement("img")
+  img.crossOrigin = "anonymous"
+  await new Promise<void>((res, rej) => {
+    img.onload = () => res()
+    img.onerror = () => rej()
+    img.src = src
+  })
+  const canvas = document.createElement("canvas")
+  canvas.width = pixels.width
+  canvas.height = pixels.height
+  canvas.getContext("2d")!.drawImage(
+    img, pixels.x, pixels.y, pixels.width, pixels.height,
+    0, 0, pixels.width, pixels.height
+  )
+  return new Promise((res, rej) =>
+    canvas.toBlob((b) => (b ? res(b) : rej("toBlob failed")), "image/jpeg", 0.92)
+  )
+}
+
+// Lets the user upload a file, search Unsplash, or enter a URL — then crop/zoom the result
 export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
+  // ── source tabs ───────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState("upload")
   const [uploading, setUploading] = useState(false)
   const [urlInput, setUrlInput] = useState("")
   const [urlLoading, setUrlLoading] = useState(false)
@@ -33,20 +59,76 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
   const [searching, setSearching] = useState(false)
   const [pickingPhoto, setPickingPhoto] = useState(false)
   const [searchPage, setSearchPage] = useState(0)
-  const [activeTab, setActiveTab] = useState("upload")
+
+  // ── crop step ─────────────────────────────────────────────────
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
+  const [cropPendingUrl, setCropPendingUrl] = useState<string | null>(null)
+  const [crop, setCrop] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null)
+  const [cropDirty, setCropDirty] = useState(false)
+  const [cropSaving, setCropSaving] = useState(false)
+
+  // Called when any source resolves to a Supabase URL — opens crop step
+  function handleImageReady(supabaseUrl: string) {
+    setCropPendingUrl(supabaseUrl)
+    setCropSrc(supabaseUrl)
+    setCrop({ x: 0, y: 0 })
+    setZoom(1)
+    setCropDirty(false)
+    setCroppedAreaPixels(null)
+  }
+
+  const onCropComplete = useCallback((_: Area, pixels: Area) => {
+    setCroppedAreaPixels(pixels)
+  }, [])
+
+  async function confirmCrop() {
+    if (!cropSrc || !cropPendingUrl) return
+
+    // Nothing changed — use already-uploaded URL directly, skip re-upload
+    if (!cropDirty) {
+      onChange(cropPendingUrl)
+      setCropSrc(null)
+      setActiveTab("upload")
+      return
+    }
+
+    if (!croppedAreaPixels) return
+    setCropSaving(true)
+    try {
+      const blob = await getCroppedBlob(cropSrc, croppedAreaPixels)
+      const formData = new FormData()
+      formData.append("file", blob, "crop.jpg")
+      const res = await fetch("/api/upload", { method: "POST", body: formData })
+      const data = await res.json()
+      if (data.url) {
+        onChange(data.url)
+        setCropSrc(null)
+        setActiveTab("upload")
+      }
+    } finally {
+      setCropSaving(false)
+    }
+  }
+
+  function cancelCrop() {
+    setCropSrc(null)
+    setCropPendingUrl(null)
+  }
+
+  // ── source handlers ───────────────────────────────────────────
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-
     setUploading(true)
     const formData = new FormData()
     formData.append("file", file)
-
     try {
       const res = await fetch("/api/upload", { method: "POST", body: formData })
       const data = await res.json()
-      if (data.url) onChange(data.url)
+      if (data.url) handleImageReady(data.url)
       else alert("Error al subir la imagen.")
     } catch {
       alert("Error al subir la imagen.")
@@ -67,7 +149,7 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
       })
       const data = await res.json()
       if (data.url) {
-        onChange(data.url)
+        handleImageReady(data.url)
         setUrlInput("")
       } else {
         setUrlError(data.error ?? "Error al cargar la imagen.")
@@ -93,7 +175,7 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
         return
       }
       if (page === 1) setSearchResults(data)
-      else setSearchResults(prev => [...prev, ...data])
+      else setSearchResults((prev) => [...prev, ...data])
     } catch {
       setSearchError("Error de red al buscar fotos.")
     } finally {
@@ -111,13 +193,51 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
       })
       const data = await res.json()
       if (data.url) {
-        onChange(data.url)
+        handleImageReady(data.url)
         setSearchResults([])
-        setActiveTab("upload")
       }
     } finally {
       setPickingPhoto(false)
     }
+  }
+
+  // ── render ────────────────────────────────────────────────────
+
+  // Crop step replaces tabs while active
+  if (cropSrc) {
+    return (
+      <div className="space-y-3">
+        <Label>Imagen</Label>
+        <div className="relative h-64 w-full overflow-hidden rounded-md bg-black">
+          <Cropper
+            image={cropSrc}
+            crop={crop}
+            zoom={zoom}
+            aspect={16 / 9}
+            onCropChange={(c) => { setCrop(c); setCropDirty(true) }}
+            onZoomChange={(z) => { setZoom(z); setCropDirty(true) }}
+            onCropComplete={onCropComplete}
+          />
+        </div>
+        <div className="flex items-center gap-3 px-1">
+          <span className="text-xs text-muted-foreground shrink-0">Zoom</span>
+          <Slider
+            min={1} max={3} step={0.05}
+            value={[zoom]}
+            onValueChange={([v]) => { setZoom(v); setCropDirty(true) }}
+            className="flex-1"
+          />
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={confirmCrop} disabled={cropSaving}>
+            {cropSaving ? "Guardando…" : "Guardar"}
+          </Button>
+          <Button variant="ghost" onClick={cancelCrop} disabled={cropSaving}>
+            Cancelar
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -172,9 +292,7 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
             </Button>
           </div>
 
-          {searchError && (
-            <p className="text-sm text-destructive">{searchError}</p>
-          )}
+          {searchError && <p className="text-sm text-destructive">{searchError}</p>}
 
           {!searchError && searchPage > 0 && !searching && searchResults.length === 0 && (
             <p className="text-sm text-muted-foreground">Sin resultados para esta búsqueda.</p>
@@ -234,19 +352,28 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
         </TabsContent>
       </Tabs>
 
-      {/* Preview */}
+      {/* Preview with crop button */}
       {value && (
         <div className="relative aspect-video w-full overflow-hidden rounded-md border bg-muted">
           <Image src={value} alt="Preview" fill className="object-cover" />
-          <Button
-            type="button"
-            variant="destructive"
-            size="sm"
-            className="absolute top-2 right-2"
-            onClick={() => onChange(null)}
-          >
-            Quitar
-          </Button>
+          <div className="absolute top-2 right-2 flex gap-1.5">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => handleImageReady(value)}
+            >
+              Recortar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={() => onChange(null)}
+            >
+              Quitar
+            </Button>
+          </div>
         </div>
       )}
     </div>
