@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import Image from "next/image"
 import Link from "next/link"
 import "./globals.css"
@@ -7,6 +7,21 @@ import { Header } from "@/components/header"
 
 export const metadata: Metadata = {
   title: "5entidos",
+  description: "Tu recetario personal",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "5entidos",
+    statusBarStyle: "default",
+  },
+  icons: { apple: "/icon-192.png" },
+}
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: "#ffffff",
 }
 
 export default function RootLayout({
