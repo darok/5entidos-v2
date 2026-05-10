@@ -52,3 +52,27 @@ export async function DELETE(
     return NextResponse.json({ error: "Failed to delete recipe" }, { status: 500 })
   }
 }
+
+// PATCH — update only the rating field (used by rank view up/down arrows)
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  try {
+    const body = await request.json()
+    const rating: number | null = body.rating ?? null
+    if (rating !== null && (!Number.isInteger(rating) || rating < 1 || rating > 4))
+      return NextResponse.json({ error: "Invalid rating" }, { status: 400 })
+
+    const { error } = await supabase.from("recipes").update({ rating }).eq("id", params.id)
+    if (error) throw error
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error(error)
+    return NextResponse.json({ error: "Failed to update rating" }, { status: 500 })
+  }
+}
