@@ -41,7 +41,7 @@ async function getCroppedBlob(src: string, pixels: Area): Promise<Blob> {
     0, 0, pixels.width, pixels.height
   )
   return new Promise((res, rej) =>
-    canvas.toBlob((b) => (b ? res(b) : rej("toBlob failed")), "image/jpeg", 0.92)
+    canvas.toBlob((b) => (b ? res(b) : rej("toBlob failed")), "image/webp", 0.95)
   )
 }
 
@@ -208,14 +208,18 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
     return (
       <div className="space-y-3">
         <Label>Imagen</Label>
-        <div className="relative h-64 w-full overflow-hidden rounded-md bg-black">
+        {/* onPointerDown marks dirty only on real user interaction, not react-easy-crop's mount call */}
+        <div
+          className="relative w-full aspect-video overflow-hidden rounded-md bg-black"
+          onPointerDown={() => setCropDirty(true)}
+        >
           <Cropper
             image={cropSrc}
             crop={crop}
             zoom={zoom}
             aspect={16 / 9}
-            onCropChange={(c) => { setCrop(c); setCropDirty(true) }}
-            onZoomChange={(z) => { setZoom(z); setCropDirty(true) }}
+            onCropChange={setCrop}
+            onZoomChange={setZoom}
             onCropComplete={onCropComplete}
           />
         </div>
