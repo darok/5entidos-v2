@@ -8,7 +8,7 @@ export async function getAll(): Promise<Recipe[]> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from("recipes")
-    .select("*, recipe_tags(tags(*))")
+    .select("*, recipe_tags(tag_id, tags(*))")
     .order("created_at", { ascending: false })
 
   if (error) throw new Error(`getAll recipes failed: ${error.message}`)
@@ -24,7 +24,7 @@ export async function getById(id: string): Promise<Recipe | null> {
       *,
       recipe_ingredients(*, ingredients(name), units(name, abbreviation)),
       recipe_steps(*),
-      recipe_tags(tags(*))
+      recipe_tags(tag_id, tags(*))
     `)
     .eq("id", id)
     .order("step_number", { referencedTable: "recipe_steps", ascending: true })
@@ -102,12 +102,10 @@ export async function update(
 
   if (recipeError) throw new Error(`update recipe failed: ${recipeError.message}`)
 
-  // Delete all related rows then re-insert
-  await Promise.all([
-    supabase.from("recipe_ingredients").delete().eq("recipe_id", id),
-    supabase.from("recipe_steps").delete().eq("recipe_id", id),
-    supabase.from("recipe_tags").delete().eq("recipe_id", id),
-  ])
+  // Delete then re-insert — sequential so a failed re-insert is not preceded by all 3 deletes
+  await supabase.from("recipe_ingredients").delete().eq("recipe_id", id)
+  await supabase.from("recipe_steps").delete().eq("recipe_id", id)
+  await supabase.from("recipe_tags").delete().eq("recipe_id", id)
 
   await _insertRelated(supabase, id, ingredients, steps, tagIds)
 }
