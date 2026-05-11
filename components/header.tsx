@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { useAuth } from "@/components/providers"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
-import { PlusCircle, Settings, LogOut, Mic } from "lucide-react"
+import { PlusCircle, Settings, LogOut, Mic, Menu } from "lucide-react"
 
 // Top navigation bar — scroll-aware: taller with larger logo at page top, compact on scroll
 export function Header() {
@@ -16,6 +16,16 @@ export function Header() {
   const router = useRouter()
   const pathname = usePathname()
   const [scrolled, setScrolled] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    if (menuOpen) document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [menuOpen])
 
   useEffect(() => {
     function onScroll() {
@@ -66,25 +76,55 @@ export function Header() {
         <div className="flex items-center gap-2">
           {user && (
             <>
-              <Button asChild variant="ghost" size="sm">
-                <Link href="/recipes/new">
-                  <PlusCircle className="mr-1 h-4 w-4" />
-                  Nueva receta
-                </Link>
-              </Button>
-              <Button asChild variant="ghost" size="icon">
-                <Link href="/recipes/audio" aria-label="Agregar receta por audio">
-                  <Mic className="h-4 w-4" />
-                </Link>
-              </Button>
-              <Button asChild variant="ghost" size="icon">
-                <Link href="/settings" aria-label="Configuración">
-                  <Settings className="h-4 w-4" />
-                </Link>
-              </Button>
-              <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Cerrar sesión">
-                <LogOut className="h-4 w-4" />
-              </Button>
+              {/* Desktop nav */}
+              <div className="hidden sm:flex items-center gap-2">
+                <Button asChild variant="ghost" size="sm">
+                  <Link href="/recipes/new">
+                    <PlusCircle className="mr-1 h-4 w-4" />
+                    Nueva receta
+                  </Link>
+                </Button>
+                <Button asChild variant="ghost" size="icon">
+                  <Link href="/recipes/audio" aria-label="Agregar receta por audio">
+                    <Mic className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button asChild variant="ghost" size="icon">
+                  <Link href="/settings" aria-label="Configuración">
+                    <Settings className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Cerrar sesión">
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Mobile hamburger */}
+              <div ref={menuRef} className="relative sm:hidden">
+                <Button variant="ghost" size="icon" onClick={() => setMenuOpen((v) => !v)} aria-label="Menú">
+                  <Menu className="h-5 w-5" />
+                </Button>
+                {menuOpen && (
+                  <div className="absolute top-full right-0 mt-1 w-48 bg-background border rounded-md shadow-md p-1 flex flex-col gap-0.5 z-50">
+                    <Link href="/recipes/new" onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2 px-3 py-2 text-sm rounded hover:bg-muted">
+                      <PlusCircle className="h-4 w-4" /> Nueva receta
+                    </Link>
+                    <Link href="/recipes/audio" onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2 px-3 py-2 text-sm rounded hover:bg-muted">
+                      <Mic className="h-4 w-4" /> Receta por audio
+                    </Link>
+                    <Link href="/settings" onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2 px-3 py-2 text-sm rounded hover:bg-muted">
+                      <Settings className="h-4 w-4" /> Configuración
+                    </Link>
+                    <button onClick={() => { setMenuOpen(false); handleLogout() }}
+                      className="flex items-center gap-2 px-3 py-2 text-sm rounded hover:bg-muted text-left">
+                      <LogOut className="h-4 w-4" /> Cerrar sesión
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           )}
           {!user && pathname !== "/login" && (

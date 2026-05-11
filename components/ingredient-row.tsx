@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger,
 } from "@/components/ui/select"
 import { Trash2, PlusCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -80,9 +80,9 @@ export function IngredientRow({
   const showCreate = nameInput.trim() && !exactMatch
 
   return (
-    <div className="flex flex-wrap gap-2 items-start">
+    <div className="flex gap-1.5 items-center">
       {/* Ingredient autocomplete */}
-      <div ref={wrapperRef} className="relative flex-1 min-w-[160px]">
+      <div ref={wrapperRef} className="relative flex-1 min-w-0">
         <Input
           value={nameInput}
           onChange={(e) => { setNameInput(e.target.value); setShowDropdown(true) }}
@@ -136,7 +136,7 @@ export function IngredientRow({
         value={value.quantity}
         onChange={(e) => onChange({ ...value, quantity: e.target.value })}
         placeholder="Cant."
-        className="w-20"
+        className="w-14"
       />
 
       {/* Unit */}
@@ -144,8 +144,11 @@ export function IngredientRow({
         value={value.unit_id}
         onValueChange={(v) => onChange({ ...value, unit_id: v })}
       >
-        <SelectTrigger className="w-28">
-          <SelectValue placeholder="Unidad" />
+        <SelectTrigger className="w-16">
+          {value.unit_id
+            ? <span className="truncate text-sm">{allUnits.find((u) => u.id === value.unit_id)?.abbreviation ?? "?"}</span>
+            : <span className="text-muted-foreground text-xs">Ud.</span>
+          }
         </SelectTrigger>
         <SelectContent>
           {allUnits.map((u) => (
@@ -165,7 +168,7 @@ export function IngredientRow({
           htmlFor={`opt-${value.ingredient_id || Math.random()}`}
           className="text-xs text-muted-foreground cursor-pointer"
         >
-          Opcional
+          Opc.
         </Label>
       </div>
 

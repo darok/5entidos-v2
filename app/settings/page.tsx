@@ -181,7 +181,7 @@ function TagsTab() {
   const [tags, setTags] = useState<Tag[]>([])
   const [tagTypes, setTagTypes] = useState<TagType[]>([])
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => { loadData() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadData() {
     const [t, tt] = await Promise.all([fetch("/api/tags").then((r) => r.json()), fetch("/api/tag-types").then((r) => r.json())])
@@ -252,45 +252,46 @@ interface SortableUnitRowProps {
   unit: Unit
   editingId: string | null
   onEdit: (id: string) => void
-  onSave: (id: string, name: string) => Promise<void>
+  onSave: (id: string, name: string, abbreviation: string) => Promise<void>
   onCancelEdit: () => void
   onDelete: (unit: Unit) => void
 }
 
 function SortableUnitRow({ unit, editingId, onEdit, onSave, onCancelEdit, onDelete }: SortableUnitRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: unit.id })
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
+  const [editName, setEditName] = useState(unit.name)
+  const [editAbbr, setEditAbbr] = useState(unit.abbreviation)
+  const [saving, setSaving] = useState(false)
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
+
+  useEffect(() => {
+    if (editingId === unit.id) { setEditName(unit.name); setEditAbbr(unit.abbreviation) }
+  }, [editingId, unit.id, unit.name, unit.abbreviation])
+
+  async function handleSave() {
+    if (!editName.trim()) return
+    setSaving(true)
+    await onSave(unit.id, editName.trim(), editAbbr.trim() || editName.trim())
+    setSaving(false)
   }
 
   return (
     <li ref={setNodeRef} style={style} className="flex items-center gap-2 px-4 py-2">
-      <button
-        {...attributes}
-        {...listeners}
-        className="cursor-grab text-muted-foreground hover:text-foreground touch-none"
-        aria-label="Arrastrar para reordenar"
-        type="button"
-      >
+      <button {...attributes} {...listeners} className="cursor-grab text-muted-foreground hover:text-foreground touch-none" aria-label="Arrastrar para reordenar" type="button">
         <GripVertical className="h-4 w-4" />
       </button>
       {editingId === unit.id ? (
-        <EditRow
-          value={unit.name}
-          onSave={async (name) => { await onSave(unit.id, name) }}
-          onCancel={onCancelEdit}
-        />
+        <div className="flex gap-2 items-center flex-1">
+          <Input value={editName} onChange={(e) => setEditName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onCancelEdit() }} className="h-8 text-sm flex-1" autoFocus />
+          <Input value={editAbbr} onChange={(e) => setEditAbbr(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onCancelEdit() }} className="h-8 text-sm w-20" placeholder="Abrev." />
+          <Button size="icon" variant="ghost" onClick={handleSave} disabled={saving} className="h-8 w-8"><Check className="h-4 w-4 text-green-600" /></Button>
+          <Button size="icon" variant="ghost" onClick={onCancelEdit} className="h-8 w-8"><X className="h-4 w-4 text-muted-foreground" /></Button>
+        </div>
       ) : (
         <>
-          <span className="flex-1 text-sm">{unit.name}</span>
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEdit(unit.id)}>
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-          <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => onDelete(unit)}>
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          <span className="flex-1 text-sm">{unit.name} <span className="text-muted-foreground">({unit.abbreviation})</span></span>
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEdit(unit.id)}><Pencil className="h-3.5 w-3.5" /></Button>
+          <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => onDelete(unit)}><Trash2 className="h-3.5 w-3.5" /></Button>
         </>
       )}
     </li>
@@ -303,6 +304,7 @@ function UnitsTab() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deleteItem, setDeleteItem] = useState<Unit | null>(null)
   const [newName, setNewName] = useState("")
+  const [newAbbr, setNewAbbr] = useState("")
   const [adding, setAdding] = useState(false)
 
   useEffect(() => { loadData() }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -316,15 +318,15 @@ function UnitsTab() {
   async function handleCreate() {
     if (!newName.trim()) return
     setAdding(true)
-    await fetch("/api/units", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newName.trim(), abbreviation: newName.trim() }) })
+    await fetch("/api/units", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newName.trim(), abbreviation: newAbbr.trim() || newName.trim() }) })
     setNewName("")
+    setNewAbbr("")
     setAdding(false)
     await loadData()
   }
 
-  async function handleUpdate(id: string, name: string) {
-    const unit = units.find((u) => u.id === id)
-    await fetch(`/api/units/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, abbreviation: unit?.abbreviation ?? name }) })
+  async function handleUpdate(id: string, name: string, abbreviation: string) {
+    await fetch(`/api/units/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, abbreviation }) })
     setEditingId(null)
     await loadData()
   }
@@ -378,11 +380,18 @@ function UnitsTab() {
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") handleCreate() }}
           placeholder="Nueva unidad…"
-          className="h-8 text-sm"
+          className="h-8 text-sm flex-1"
+        />
+        <Input
+          value={newAbbr}
+          onChange={(e) => setNewAbbr(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleCreate() }}
+          placeholder="Abrev."
+          className="h-8 text-sm w-20"
         />
         <Button size="sm" variant="outline" onClick={handleCreate} disabled={adding || !newName.trim()}>
           <PlusCircle className="mr-1 h-3.5 w-3.5" />
-          Agregar unidad
+          Agregar
         </Button>
       </div>
 
@@ -403,8 +412,14 @@ function UnitsTab() {
 function IngredientsTab() {
   const router = useRouter()
   const [ingredients, setIngredients] = useState<Ingredient[]>([])
+  const [ingSearch, setIngSearch] = useState("")
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [deleteItem, setDeleteItem] = useState<Ingredient | null>(null)
+  const [pendingMerge, setPendingMerge] = useState<{ sourceId: string; targetId: string; targetName: string } | null>(null)
+  const [newName, setNewName] = useState("")
+  const [adding, setAdding] = useState(false)
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => { loadData() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadData() {
     const data = await fetch("/api/ingredients").then((r) => r.json())
@@ -412,29 +427,120 @@ function IngredientsTab() {
     router.refresh()
   }
 
-  async function handleCreate(name: string) {
-    await fetch("/api/ingredients", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) })
+  async function handleCreate() {
+    if (!newName.trim()) return
+    setAdding(true)
+    await fetch("/api/ingredients", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newName.trim() }) })
+    setNewName("")
+    setAdding(false)
     await loadData()
   }
 
   async function handleUpdate(id: string, name: string) {
+    const duplicate = ingredients.find((i) => i.id !== id && i.name.toLowerCase() === name.toLowerCase())
+    if (duplicate) {
+      setEditingId(null)
+      setPendingMerge({ sourceId: id, targetId: duplicate.id, targetName: duplicate.name })
+      return
+    }
     await fetch(`/api/ingredients/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) })
+    setEditingId(null)
     await loadData()
   }
 
   async function handleDelete(id: string) {
     await fetch(`/api/ingredients/${id}`, { method: "DELETE" })
+    setDeleteItem(null)
     await loadData()
   }
 
+  async function handleMerge() {
+    if (!pendingMerge) return
+    await fetch(`/api/ingredients/${pendingMerge.sourceId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_id: pendingMerge.targetId }),
+    })
+    setPendingMerge(null)
+    await loadData()
+  }
+
+  const filtered = ingredients.filter((i) => i.name.toLowerCase().includes(ingSearch.toLowerCase()))
+
   return (
-    <CatalogList
-      items={ingredients}
-      onCreate={handleCreate}
-      onUpdate={handleUpdate}
-      onDelete={handleDelete}
-      addLabel="Agregar ingrediente"
-    />
+    <div className="space-y-3">
+      <Input
+        placeholder="Buscar ingrediente…"
+        value={ingSearch}
+        onChange={(e) => setIngSearch(e.target.value)}
+        className="max-w-xs"
+      />
+
+      <ul className="divide-y rounded-md border">
+        {filtered.length === 0 && (
+          <li className="px-4 py-3 text-sm text-muted-foreground">Sin elementos</li>
+        )}
+        {filtered.map((item) => (
+          <li key={item.id} className="flex items-center gap-2 px-4 py-2">
+            {editingId === item.id ? (
+              <EditRow
+                value={item.name}
+                onSave={async (name) => { await handleUpdate(item.id, name) }}
+                onCancel={() => setEditingId(null)}
+              />
+            ) : (
+              <>
+                <span className="flex-1 text-sm">{item.name}</span>
+                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingId(item.id)}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => setDeleteItem(item)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      <div className="flex gap-2">
+        <Input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleCreate() }}
+          placeholder="Nuevo nombre…"
+          className="h-8 text-sm"
+        />
+        <Button size="sm" variant="outline" onClick={handleCreate} disabled={adding || !newName.trim()}>
+          <PlusCircle className="mr-1 h-3.5 w-3.5" />
+          Agregar ingrediente
+        </Button>
+      </div>
+
+      {deleteItem && (
+        <DeleteDialog
+          open={!!deleteItem}
+          name={deleteItem.name}
+          onConfirm={async () => handleDelete(deleteItem.id)}
+          onCancel={() => setDeleteItem(null)}
+        />
+      )}
+
+      <Dialog open={!!pendingMerge} onOpenChange={(v) => { if (!v) setPendingMerge(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ingrediente duplicado</DialogTitle>
+            <DialogDescription>
+              Ya existe un ingrediente llamado &quot;{pendingMerge?.targetName}&quot;. ¿Fusionar? Todas las recetas que usaban el ingrediente anterior pasarán a usar &quot;{pendingMerge?.targetName}&quot;.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingMerge(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleMerge}>Fusionar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   )
 }
 

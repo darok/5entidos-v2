@@ -14,7 +14,7 @@ import {
 import { ImageUpload } from "@/components/image-upload"
 import { IngredientRow, type IngredientRowValue } from "@/components/ingredient-row"
 import { StepRow } from "@/components/step-row"
-import { PlusCircle, X, Pencil, Check } from "lucide-react"
+import { PlusCircle, X, Pencil, Check, Loader2 } from "lucide-react"
 import type { Tag, Ingredient, Unit } from "@/types"
 
 // ── Constants ─────────────────────────────────────────────────────
@@ -228,7 +228,7 @@ export function RecipeForm({
   ).length
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8">
+    <form onSubmit={handleSubmit} className="space-y-8 pb-32">
       {/* Audio warning banner */}
       {fromAudio && showBanner && (
         <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-md px-4 py-3 flex items-start justify-between gap-3 text-sm">
@@ -459,13 +459,26 @@ export function RecipeForm({
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      {/* Actions */}
-      <div className="flex gap-3 pb-8">
-        <Button type="submit" disabled={saving}>
-          {saving ? "Guardando…" : "Guardar"}
+      {/* Floating action buttons */}
+      <div className="fixed bottom-6 right-6 flex flex-col-reverse gap-2 items-center z-40">
+        <Button
+          type="submit"
+          size="icon"
+          className="h-14 w-14 rounded-full shadow-lg"
+          disabled={saving}
+          aria-label="Guardar"
+        >
+          {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.back()}>
-          Cancelar
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-12 w-12 rounded-full shadow"
+          onClick={() => router.back()}
+          aria-label="Cancelar"
+        >
+          <X className="h-4 w-4" />
         </Button>
       </div>
 
