@@ -67,7 +67,7 @@ export function Header() {
             />
           </div>
           {/* Compact: horizontal logo fades in on scroll */}
-          <div className={`absolute inset-0 flex items-center transition-opacity duration-300 ${scrolled ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+          <div className={`absolute inset-y-0 left-0 flex items-center transition-opacity duration-300 ${scrolled ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
             <Image src="/logo_horiz.png" alt="5entidos" width={324} height={99} className="h-10 w-auto" priority />
           </div>
         </Link>
