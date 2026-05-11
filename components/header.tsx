@@ -66,10 +66,9 @@ export function Header() {
               priority
             />
           </div>
-          {/* Compact: icon + wordmark fade in on scroll */}
-          <div className={`absolute inset-0 flex items-center gap-2 transition-opacity duration-300 ${scrolled ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
-            <Image src="/logo_icon.png" alt="" width={40} height={40} className="h-10 w-10 flex-shrink-0" priority />
-            <span className="font-bold text-lg tracking-tight text-foreground whitespace-nowrap">5entidos</span>
+          {/* Compact: horizontal logo fades in on scroll */}
+          <div className={`absolute inset-0 flex items-center transition-opacity duration-300 ${scrolled ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+            <Image src="/logo_horiz.png" alt="5entidos" width={160} height={40} className="h-10 w-auto" priority />
           </div>
         </Link>
 

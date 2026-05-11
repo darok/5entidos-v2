@@ -14,8 +14,9 @@ import {
 import { ImageUpload } from "@/components/image-upload"
 import { IngredientRow, type IngredientRowValue } from "@/components/ingredient-row"
 import { StepRow } from "@/components/step-row"
-import { PlusCircle, X, Pencil, Check, Loader2, GripVertical } from "lucide-react"
-import type { Tag, Ingredient, Unit } from "@/types"
+import { PlusCircle, X, Pencil, Check, Loader2, GripVertical, Mic } from "lucide-react"
+import type { Tag, Ingredient, Unit, EditChange } from "@/types"
+import { AudioEditDialog } from "@/components/audio-edit-dialog"
 import {
   DndContext, closestCenter, type DragEndEvent,
 } from "@dnd-kit/core"
@@ -146,6 +147,7 @@ export function RecipeForm({
   const [notesEditing, setNotesEditing] = useState(false)
   const [notesText, setNotesText] = useState(audioNotes ?? "")
   const [pendingNewIngredients, setPendingNewIngredients] = useState<string[]>([])
+  const [showAudioEdit, setShowAudioEdit] = useState(false)
 
   function setField<K extends keyof RecipeFormData>(key: K, value: RecipeFormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -198,6 +200,88 @@ export function RecipeForm({
       setField("steps", arrayMove(form.steps, oldIndex, newIndex))
       setStepKeys((prev) => arrayMove(prev, oldIndex, newIndex))
     }
+  }
+
+  // Applies a batch of AI-suggested changes from AudioEditDialog to form state
+  function handleApplyAudioChanges(changes: EditChange[]) {
+    let ings = [...form.ingredients]
+    const steps = [...form.steps]
+    const keys = [...stepKeys]
+
+    for (const c of changes) {
+      switch (c.type) {
+        case "set_field":
+          setField(c.field, c.value)
+          break
+        case "add_ingredient": {
+          const unit = allUnits.find(
+            (u) =>
+              u.name.toLowerCase() === c.unit?.toLowerCase() ||
+              u.abbreviation.toLowerCase() === c.unit?.toLowerCase(),
+          )
+          const existing = localIngredients.find(
+            (i) => i.name.toLowerCase() === c.name.toLowerCase(),
+          )
+          ings.push({
+            _key: crypto.randomUUID(),
+            ingredient_id: existing?.id ?? "",
+            ingredient_name: c.name,
+            quantity: c.quantity != null ? String(c.quantity) : "",
+            unit_id: unit?.id ?? "",
+            optional: false,
+          })
+          break
+        }
+        case "modify_ingredient": {
+          const idx = ings.findIndex(
+            (i) => i.ingredient_name.toLowerCase() === c.name.toLowerCase(),
+          )
+          if (idx !== -1) {
+            const unit = c.new_unit
+              ? allUnits.find(
+                  (u) =>
+                    u.name.toLowerCase() === c.new_unit!.toLowerCase() ||
+                    u.abbreviation.toLowerCase() === c.new_unit!.toLowerCase(),
+                )
+              : undefined
+            ings[idx] = {
+              ...ings[idx],
+              quantity: c.new_quantity != null ? String(c.new_quantity) : ings[idx].quantity,
+              unit_id: unit?.id ?? ings[idx].unit_id,
+            }
+          }
+          break
+        }
+        case "remove_ingredient":
+          ings = ings.filter(
+            (i) => i.ingredient_name.toLowerCase() !== c.name.toLowerCase(),
+          )
+          break
+        case "add_step": {
+          const at = Math.max(0, Math.min(c.after_index, steps.length))
+          steps.splice(at, 0, c.description)
+          keys.splice(at, 0, crypto.randomUUID())
+          break
+        }
+        case "modify_step": {
+          const idx = c.step_number - 1
+          if (idx >= 0 && idx < steps.length) steps[idx] = c.description
+          break
+        }
+        case "remove_step": {
+          const idx = c.step_number - 1
+          if (idx >= 0 && idx < steps.length) {
+            steps.splice(idx, 1)
+            keys.splice(idx, 1)
+          }
+          break
+        }
+      }
+    }
+
+    setField("ingredients", ings)
+    setField("steps", steps)
+    setStepKeys(keys)
   }
 
   async function createIngredient(name: string): Promise<Ingredient> {
@@ -546,26 +630,38 @@ export function RecipeForm({
 
       {/* Actions — floating FABs for edit, regular buttons for new recipe */}
       {recipeId ? (
-        <div className="fixed bottom-6 right-6 flex gap-2 z-40">
+        <div className="fixed bottom-6 right-6 flex flex-col gap-2 items-end z-40">
           <Button
             type="button"
-            variant="outline"
             size="icon"
-            className="h-12 w-12 rounded-full shadow"
-            onClick={() => router.back()}
-            aria-label="Cancelar"
+            variant="secondary"
+            className="h-10 w-10 rounded-full shadow"
+            onClick={() => setShowAudioEdit(true)}
+            aria-label="Editar con audio"
           >
-            <X className="h-4 w-4" />
+            <Mic className="h-4 w-4" />
           </Button>
-          <Button
-            type="submit"
-            size="icon"
-            className="h-12 w-12 rounded-full shadow-lg"
-            disabled={saving}
-            aria-label="Guardar"
-          >
-            {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-12 w-12 rounded-full shadow"
+              onClick={() => router.back()}
+              aria-label="Cancelar"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+            <Button
+              type="submit"
+              size="icon"
+              className="h-12 w-12 rounded-full shadow-lg"
+              disabled={saving}
+              aria-label="Guardar"
+            >
+              {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="flex gap-3 pb-8">
@@ -576,6 +672,31 @@ export function RecipeForm({
             Cancelar
           </Button>
         </div>
+      )}
+
+      {/* Audio edit dialog — only available when editing an existing recipe */}
+      {recipeId && (
+        <AudioEditDialog
+          open={showAudioEdit}
+          onClose={() => setShowAudioEdit(false)}
+          currentRecipe={{
+            title: form.title,
+            description: form.description,
+            prep_time: form.prep_time,
+            servings: form.servings,
+            rating: form.rating,
+            ingredients: form.ingredients.map((i) => ({
+              name: i.ingredient_name,
+              quantity: i.quantity,
+              unit_name: allUnits.find((u) => u.id === i.unit_id)?.abbreviation ?? "",
+            })),
+            steps: form.steps,
+          }}
+          onApply={(changes) => {
+            handleApplyAudioChanges(changes)
+            setShowAudioEdit(false)
+          }}
+        />
       )}
 
       {/* New ingredients confirmation dialog */}

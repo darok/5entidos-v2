@@ -70,6 +70,16 @@ export const RATING_LABELS: Record<number, string> = {
   4: 'Top-tier',
 }
 
+// Structured change emitted by the audio-edit AI for in-place recipe editing
+export type EditChange =
+  | { type: "set_field"; field: "title" | "description" | "prep_time" | "servings" | "rating"; value: string; label: string }
+  | { type: "add_ingredient"; name: string; quantity?: number; unit?: string; label: string }
+  | { type: "modify_ingredient"; name: string; new_quantity?: number; new_unit?: string; label: string }
+  | { type: "remove_ingredient"; name: string; label: string }
+  | { type: "add_step"; after_index: number; description: string; label: string }
+  | { type: "modify_step"; step_number: number; description: string; label: string }
+  | { type: "remove_step"; step_number: number; label: string }
+
 // Shape returned by the AI extract endpoint
 export interface ExtractedRecipe {
   title: string
