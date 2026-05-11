@@ -37,7 +37,7 @@ export default function RootLayout({
           <main>{children}</main>
           <footer className="border-t mt-16 py-6 text-center text-sm text-muted-foreground">
             <Link href="/" className="inline-block mb-2 hover:opacity-80">
-              <Image src="/logo_icon.png" alt="5entidos" width={32} height={32} />
+              <Image src="/logo_simple.png" alt="5entidos" width={32} height={32} />
             </Link>
             <p>
               Desarrollado por{" "}
