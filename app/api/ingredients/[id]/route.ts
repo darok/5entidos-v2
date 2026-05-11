@@ -34,8 +34,18 @@ export async function PATCH(
     const { target_id } = await request.json()
     if (!target_id) return NextResponse.json({ error: "target_id required" }, { status: 400 })
 
-    await supabase.from("recipe_ingredients").update({ ingredient_id: target_id }).eq("ingredient_id", params.id)
-    await supabase.from("ingredients").delete().eq("id", params.id)
+    const { error: updateError } = await supabase
+      .from("recipe_ingredients")
+      .update({ ingredient_id: target_id })
+      .eq("ingredient_id", params.id)
+    if (updateError) throw new Error(updateError.message)
+
+    const { error: deleteError } = await supabase
+      .from("ingredients")
+      .delete()
+      .eq("id", params.id)
+    if (deleteError) throw new Error(deleteError.message)
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error(error)
@@ -52,6 +62,18 @@ export async function DELETE(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   try {
+    // Check if any recipes use this ingredient before deleting
+    const { data: usages } = await supabase
+      .from("recipe_ingredients")
+      .select("recipes(id, title)")
+      .eq("ingredient_id", params.id)
+
+    if (usages && usages.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const recipes = usages.map((u: any) => u.recipes).filter(Boolean)
+      return NextResponse.json({ error: "in_use", recipes }, { status: 409 })
+    }
+
     await db.deleteIngredient(params.id)
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -14,8 +14,15 @@ import {
 import { ImageUpload } from "@/components/image-upload"
 import { IngredientRow, type IngredientRowValue } from "@/components/ingredient-row"
 import { StepRow } from "@/components/step-row"
-import { PlusCircle, X, Pencil, Check, Loader2 } from "lucide-react"
+import { PlusCircle, X, Pencil, Check, Loader2, GripVertical } from "lucide-react"
 import type { Tag, Ingredient, Unit } from "@/types"
+import {
+  DndContext, closestCenter, type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext, verticalListSortingStrategy, arrayMove, useSortable,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 
 // ── Constants ─────────────────────────────────────────────────────
 
@@ -49,7 +56,7 @@ interface RecipeFormProps {
 // ── Helpers ───────────────────────────────────────────────────────
 
 function emptyIngredient(): IngredientRowValue {
-  return { ingredient_id: "", ingredient_name: "", quantity: "", unit_id: "", optional: false }
+  return { _key: crypto.randomUUID(), ingredient_id: "", ingredient_name: "", quantity: "", unit_id: "", optional: false }
 }
 
 function defaultForm(): RecipeFormData {
@@ -66,6 +73,40 @@ function defaultForm(): RecipeFormData {
   }
 }
 
+// ── Sortable wrappers ─────────────────────────────────────────────
+
+// Drag-to-reorder wrapper for IngredientRow — uses _key as stable DnD id
+function SortableIngredientRow(props: React.ComponentProps<typeof IngredientRow>) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.value._key! })
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-1.5">
+      <button {...attributes} {...listeners} type="button" className="cursor-grab text-muted-foreground touch-none p-1 flex-shrink-0" aria-label="Reordenar">
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <div className="flex-1 min-w-0">
+        <IngredientRow {...props} />
+      </div>
+    </div>
+  )
+}
+
+// Drag-to-reorder wrapper for StepRow — uses stepKey as stable DnD id
+function SortableStepRow({ stepKey, ...props }: { stepKey: string } & React.ComponentProps<typeof StepRow>) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: stepKey })
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-start gap-1.5">
+      <button {...attributes} {...listeners} type="button" className="cursor-grab text-muted-foreground touch-none p-1 mt-2 flex-shrink-0" aria-label="Reordenar">
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <div className="flex-1">
+        <StepRow {...props} />
+      </div>
+    </div>
+  )
+}
+
 // ── Component ─────────────────────────────────────────────────────
 
 // Shared form for creating and editing recipes
@@ -79,7 +120,22 @@ export function RecipeForm({
   audioNotes,
 }: RecipeFormProps) {
   const router = useRouter()
-  const [form, setForm] = useState<RecipeFormData>({ ...defaultForm(), ...initialData })
+
+  const [form, setForm] = useState<RecipeFormData>(() => {
+    const base = { ...defaultForm(), ...initialData }
+    return {
+      ...base,
+      ingredients: (base.ingredients.length > 0 ? base.ingredients : [emptyIngredient()])
+        .map((ing) => ({ ...ing, _key: ing._key ?? crypto.randomUUID() })),
+    }
+  })
+
+  // Stable keys for step DnD — parallel to form.steps
+  const [stepKeys, setStepKeys] = useState<string[]>(() => {
+    const base = { ...defaultForm(), ...initialData }
+    return (base.steps.length > 0 ? base.steps : [""]).map(() => crypto.randomUUID())
+  })
+
   const [localIngredients, setLocalIngredients] = useState<Ingredient[]>(allIngredients)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -122,6 +178,26 @@ export function RecipeForm({
 
   function removeStep(index: number) {
     setField("steps", form.steps.filter((_, i) => i !== index))
+    setStepKeys((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  function handleIngredientDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = form.ingredients.findIndex((i) => i._key === active.id)
+    const newIndex = form.ingredients.findIndex((i) => i._key === over.id)
+    if (oldIndex !== -1 && newIndex !== -1) setField("ingredients", arrayMove(form.ingredients, oldIndex, newIndex))
+  }
+
+  function handleStepDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = stepKeys.indexOf(active.id as string)
+    const newIndex = stepKeys.indexOf(over.id as string)
+    if (oldIndex !== -1 && newIndex !== -1) {
+      setField("steps", arrayMove(form.steps, oldIndex, newIndex))
+      setStepKeys((prev) => arrayMove(prev, oldIndex, newIndex))
+    }
   }
 
   async function createIngredient(name: string): Promise<Ingredient> {
@@ -228,7 +304,7 @@ export function RecipeForm({
   ).length
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8 pb-32">
+    <form onSubmit={handleSubmit} className={`space-y-8 ${recipeId ? "pb-32" : ""}`}>
       {/* Audio warning banner */}
       {fromAudio && showBanner && (
         <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-md px-4 py-3 flex items-start justify-between gap-3 text-sm">
@@ -370,19 +446,23 @@ export function RecipeForm({
       {/* Ingredients */}
       <section className="space-y-3">
         <Label>Ingredientes</Label>
-        <div className="space-y-3">
-          {form.ingredients.map((ing, i) => (
-            <IngredientRow
-              key={i}
-              value={ing}
-              allIngredients={localIngredients}
-              allUnits={allUnits}
-              onChange={(v) => updateIngredient(i, v)}
-              onRemove={() => removeIngredient(i)}
-              onCreateIngredient={createIngredient}
-            />
-          ))}
-        </div>
+        <DndContext collisionDetection={closestCenter} onDragEnd={handleIngredientDragEnd}>
+          <SortableContext items={form.ingredients.map((i) => i._key!)} strategy={verticalListSortingStrategy}>
+            <div className="space-y-3">
+              {form.ingredients.map((ing, i) => (
+                <SortableIngredientRow
+                  key={ing._key}
+                  value={ing}
+                  allIngredients={localIngredients}
+                  allUnits={allUnits}
+                  onChange={(v) => updateIngredient(i, v)}
+                  onRemove={() => removeIngredient(i)}
+                  onCreateIngredient={createIngredient}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
         <Button
           type="button"
           variant="outline"
@@ -399,22 +479,27 @@ export function RecipeForm({
       {/* Steps */}
       <section className="space-y-3">
         <Label>Pasos</Label>
-        <div className="space-y-3">
-          {form.steps.map((step, i) => (
-            <StepRow
-              key={i}
-              index={i}
-              value={step}
-              onChange={(v) => updateStep(i, v)}
-              onRemove={() => removeStep(i)}
-            />
-          ))}
-        </div>
+        <DndContext collisionDetection={closestCenter} onDragEnd={handleStepDragEnd}>
+          <SortableContext items={stepKeys} strategy={verticalListSortingStrategy}>
+            <div className="space-y-3">
+              {form.steps.map((step, i) => (
+                <SortableStepRow
+                  key={stepKeys[i]}
+                  stepKey={stepKeys[i]}
+                  index={i}
+                  value={step}
+                  onChange={(v) => updateStep(i, v)}
+                  onRemove={() => removeStep(i)}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
         <Button
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => setField("steps", [...form.steps, ""])}
+          onClick={() => { setField("steps", [...form.steps, ""]); setStepKeys((prev) => [...prev, crypto.randomUUID()]) }}
         >
           <PlusCircle className="mr-1 h-4 w-4" />
           Agregar paso
@@ -459,28 +544,39 @@ export function RecipeForm({
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      {/* Floating action buttons */}
-      <div className="fixed bottom-6 right-6 flex flex-col-reverse gap-2 items-center z-40">
-        <Button
-          type="submit"
-          size="icon"
-          className="h-14 w-14 rounded-full shadow-lg"
-          disabled={saving}
-          aria-label="Guardar"
-        >
-          {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="h-12 w-12 rounded-full shadow"
-          onClick={() => router.back()}
-          aria-label="Cancelar"
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
+      {/* Actions — floating FABs for edit, regular buttons for new recipe */}
+      {recipeId ? (
+        <div className="fixed bottom-6 right-6 flex gap-2 z-40">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-12 w-12 rounded-full shadow"
+            onClick={() => router.back()}
+            aria-label="Cancelar"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+          <Button
+            type="submit"
+            size="icon"
+            className="h-12 w-12 rounded-full shadow-lg"
+            disabled={saving}
+            aria-label="Guardar"
+          >
+            {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex gap-3 pb-8">
+          <Button type="submit" disabled={saving}>
+            {saving ? "Guardando…" : "Crear"}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => router.back()}>
+            Cancelar
+          </Button>
+        </div>
+      )}
 
       {/* New ingredients confirmation dialog */}
       <Dialog open={pendingNewIngredients.length > 0} onOpenChange={(open) => { if (!open) setPendingNewIngredients([]) }}>

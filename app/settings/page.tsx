@@ -415,6 +415,7 @@ function IngredientsTab() {
   const [ingSearch, setIngSearch] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deleteItem, setDeleteItem] = useState<Ingredient | null>(null)
+  const [deleteBlocked, setDeleteBlocked] = useState<{ name: string; recipes: { id: string; title: string }[] } | null>(null)
   const [pendingMerge, setPendingMerge] = useState<{ sourceId: string; targetId: string; targetName: string } | null>(null)
   const [newName, setNewName] = useState("")
   const [adding, setAdding] = useState(false)
@@ -449,7 +450,14 @@ function IngredientsTab() {
   }
 
   async function handleDelete(id: string) {
-    await fetch(`/api/ingredients/${id}`, { method: "DELETE" })
+    const name = deleteItem?.name ?? ""
+    const res = await fetch(`/api/ingredients/${id}`, { method: "DELETE" })
+    if (res.status === 409) {
+      const data = await res.json()
+      setDeleteItem(null)
+      setDeleteBlocked({ name, recipes: data.recipes ?? [] })
+      return
+    }
     setDeleteItem(null)
     await loadData()
   }
@@ -525,6 +533,27 @@ function IngredientsTab() {
           onCancel={() => setDeleteItem(null)}
         />
       )}
+
+      {/* Delete blocked dialog */}
+      <Dialog open={!!deleteBlocked} onOpenChange={(v) => { if (!v) setDeleteBlocked(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>No se puede eliminar &quot;{deleteBlocked?.name}&quot;</DialogTitle>
+            <DialogDescription>
+              Este ingrediente está siendo usado por las siguientes recetas:
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+            {deleteBlocked?.recipes.slice(0, 3).map((r) => <li key={r.id}>{r.title}</li>)}
+            {(deleteBlocked?.recipes.length ?? 0) > 3 && (
+              <li>…y {deleteBlocked!.recipes.length - 3} más</li>
+            )}
+          </ul>
+          <DialogFooter>
+            <Button onClick={() => setDeleteBlocked(null)}>Entendido</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!pendingMerge} onOpenChange={(v) => { if (!v) setPendingMerge(null) }}>
         <DialogContent>

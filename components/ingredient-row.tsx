@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import type { Ingredient, Unit } from "@/types"
 
 export interface IngredientRowValue {
+  _key?: string  // stable ID for DnD — assigned by recipe-form, not sent to server
   ingredient_id: string
   ingredient_name: string
   quantity: string
