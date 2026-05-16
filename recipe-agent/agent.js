@@ -203,39 +203,43 @@ export async function runAgent(jobId, prompt, emit) {
         if (block.type !== 'tool_use') continue
 
         let result
-        switch (block.name) {
-          case 'load_preferences':
-            result = await loadPreferences()
-            break
-          case 'web_search':
-            emit({ type: 'searching', query: block.input.query })
-            result = await webSearch(block.input.query)
-            break
-          case 'fetch_url':
-            emit({ type: 'reading_url', url: block.input.url })
-            result = await fetchUrl(block.input.url)
-            break
-          case 'fetch_youtube_transcript':
-            emit({ type: 'reading_url', url: block.input.url })
-            result = await fetchYoutubeTranscript(block.input.url)
-            break
-          case 'check_in':
-            result = await checkIn(jobId, block.input.question, emit)
-            break
-          case 'present_draft':
-            result = await presentDraft(
-              jobId,
-              block.input.recipe,
-              block.input.questions,
-              block.input.notes,
-              emit,
-            )
-            break
-          case 'save_recipe':
-            result = await saveRecipe(jobId, block.input.recipe, messages, emit)
-            break
-          default:
-            result = `Herramienta desconocida: ${block.name}`
+        try {
+          switch (block.name) {
+            case 'load_preferences':
+              result = await loadPreferences()
+              break
+            case 'web_search':
+              emit({ type: 'searching', query: block.input.query })
+              result = await webSearch(block.input.query)
+              break
+            case 'fetch_url':
+              emit({ type: 'reading_url', url: block.input.url })
+              result = await fetchUrl(block.input.url)
+              break
+            case 'fetch_youtube_transcript':
+              emit({ type: 'reading_url', url: block.input.url })
+              result = await fetchYoutubeTranscript(block.input.url)
+              break
+            case 'check_in':
+              result = await checkIn(jobId, block.input.question, emit)
+              break
+            case 'present_draft':
+              result = await presentDraft(
+                jobId,
+                block.input.recipe,
+                block.input.questions,
+                block.input.notes,
+                emit,
+              )
+              break
+            case 'save_recipe':
+              result = await saveRecipe(jobId, block.input.recipe, messages, emit)
+              break
+            default:
+              result = `Herramienta desconocida: ${block.name}`
+          }
+        } catch (err) {
+          result = `Error en herramienta ${block.name}: ${err.message}`
         }
 
         toolResults.push({
