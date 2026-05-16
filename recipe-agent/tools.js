@@ -51,13 +51,17 @@ export async function fetchUrl(url) {
   return $('body').text().replace(/\s+/g, ' ').trim().slice(0, 8000)
 }
 
-// Fetches spoken transcript from a YouTube video URL.
+// Fetches spoken transcript from a YouTube video URL. Returns error string if unavailable.
 export async function fetchYoutubeTranscript(url) {
   const videoId = new URL(url).searchParams.get('v')
-  if (!videoId) throw new Error(`URL de YouTube inválida: ${url}`)
-  const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'es' })
-    .catch(() => YoutubeTranscript.fetchTranscript(videoId))
-  return transcript.map(t => t.text).join(' ').replace(/\s+/g, ' ').trim().slice(0, 8000)
+  if (!videoId) return `URL de YouTube inválida: ${url}`
+  try {
+    const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'es' })
+      .catch(() => YoutubeTranscript.fetchTranscript(videoId))
+    return transcript.map(t => t.text).join(' ').replace(/\s+/g, ' ').trim().slice(0, 8000)
+  } catch (err) {
+    return `Transcripción no disponible para este video: ${err.message}`
+  }
 }
 
 // ── Interaction tools ─────────────────────────────────────────────
