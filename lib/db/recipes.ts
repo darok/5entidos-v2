@@ -56,6 +56,7 @@ export interface IngredientPayload {
   quantity?: number | null
   unit_id?: string | null
   optional: boolean
+  comment?: string | null
 }
 
 export interface StepPayload {

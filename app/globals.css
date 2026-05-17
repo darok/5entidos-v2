@@ -24,6 +24,7 @@
     --input: 228 20% 88%;
     --ring: 228 32% 52%;
     --radius: 0.5rem;
+    --brand-violet: 236 39% 21%;
   }
 
   .dark {
@@ -46,6 +47,7 @@
     --border: 230 28% 20%;
     --input: 230 28% 20%;
     --ring: 228 32% 62%;
+    --brand-violet: 236 39% 70%;
   }
 
   * {

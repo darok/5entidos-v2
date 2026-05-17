@@ -49,11 +49,14 @@ export function ServingScaler({ originalServings, ingredients }: ServingScalerPr
 
           return (
             <li key={ing.id} className="flex gap-2 text-sm">
-              <span className="text-muted-foreground min-w-[5rem] text-right">
+              <span className="text-brand-violet min-w-[5rem] text-right font-medium">
                 {qty} {unit}
               </span>
               <span>
                 {name}
+                {ing.comment && (
+                  <span className="ml-1 text-muted-foreground">({ing.comment})</span>
+                )}
                 {ing.optional && (
                   <span className="ml-1 text-muted-foreground">(opcional)</span>
                 )}

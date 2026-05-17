@@ -19,6 +19,7 @@ export interface IngredientRowValue {
   quantity: string
   unit_id: string
   optional: boolean
+  comment: string
 }
 
 interface IngredientRowProps {
@@ -81,9 +82,10 @@ export function IngredientRow({
   const showCreate = nameInput.trim() && !exactMatch
 
   return (
-    <div className="flex gap-1.5 items-center">
-      {/* Ingredient autocomplete */}
-      <div ref={wrapperRef} className="relative flex-1 min-w-0">
+    <div className="flex gap-1.5 items-start">
+      {/* Ingredient name + comment */}
+      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+      <div ref={wrapperRef} className="relative w-full">
         <Input
           value={nameInput}
           onChange={(e) => { setNameInput(e.target.value); setShowDropdown(true) }}
@@ -128,6 +130,14 @@ export function IngredientRow({
           </div>
         )}
       </div>
+      <Input
+        value={value.comment}
+        onChange={(e) => onChange({ ...value, comment: e.target.value })}
+        placeholder="aclaración…"
+        maxLength={20}
+        className="h-6 text-xs text-muted-foreground border-0 border-b rounded-none px-0 shadow-none focus-visible:ring-0"
+      />
+      </div>
 
       {/* Quantity */}
       <Input
@@ -145,7 +155,7 @@ export function IngredientRow({
         value={value.unit_id}
         onValueChange={(v) => onChange({ ...value, unit_id: v })}
       >
-        <SelectTrigger className="w-16">
+        <SelectTrigger className="w-20">
           {value.unit_id
             ? <span className="truncate text-sm">{allUnits.find((u) => u.id === value.unit_id)?.abbreviation ?? "?"}</span>
             : <span className="text-muted-foreground text-xs">Ud.</span>

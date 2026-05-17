@@ -34,9 +34,10 @@ Esquema de salida obligatorio:
   "description": string,
   "servings": number,
   "prep_time": "0-30" | "30-60" | "60-120" | "120+",
-  "ingredients": [{ "name": string, "quantity": number, "unit": string }],
+  "ingredients": [{ "name": string, "quantity": number, "unit": string, "comment": string | null }],
   "steps": [string],
   "notes": string,
+// comment en ingredientes: aclaración corta opcional (máx 20 chars, ej: "picado fino"). null si no aplica.
   "sources": [string]
 }`
 
@@ -106,6 +107,7 @@ const TOOLS = [
                   name: { type: 'string' },
                   quantity: { type: 'number' },
                   unit: { type: 'string' },
+                  comment: { type: ['string', 'null'], description: 'Aclaración opcional, máximo 20 caracteres (ej: "picado fino"). null si no aplica.' },
                 },
                 required: ['name', 'quantity', 'unit'],
               },
@@ -152,6 +154,7 @@ const TOOLS = [
                   name: { type: 'string' },
                   quantity: { type: 'number' },
                   unit: { type: 'string' },
+                  comment: { type: ['string', 'null'], description: 'Aclaración opcional, máximo 20 caracteres (ej: "picado fino"). null si no aplica.' },
                 },
                 required: ['name', 'quantity', 'unit'],
               },

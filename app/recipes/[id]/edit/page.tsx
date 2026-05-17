@@ -33,6 +33,7 @@ export default async function EditRecipePage({ params }: Props) {
       quantity: ri.quantity != null ? String(ri.quantity) : "",
       unit_id: ri.unit_id ?? "",
       optional: ri.optional,
+      comment: ri.comment ?? "",
     })) ?? [],
     steps: recipe.steps?.map((s) => s.description) ?? [],
     tag_ids: recipe.recipe_tags?.map((rt) => rt.tag_id) ?? [],

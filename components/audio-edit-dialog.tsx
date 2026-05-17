@@ -17,7 +17,7 @@ export interface CurrentRecipeForEdit {
   prep_time: string
   servings: string
   rating: string
-  ingredients: Array<{ name: string; quantity: string; unit_name: string }>
+  ingredients: Array<{ name: string; quantity: string; unit_name: string; comment?: string }>
   steps: string[]
 }
 

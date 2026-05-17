@@ -21,6 +21,7 @@ export interface RecipeIngredient {
   quantity: number | null
   unit_id: string | null
   optional: boolean
+  comment?: string | null
   ingredients: { name: string }
   units: { name: string; abbreviation: string } | null
 }
@@ -85,7 +86,7 @@ export interface ExtractedRecipe {
   title: string
   description: string | null
   servings: number | null
-  ingredients: { name: string; quantity: number | null; unit: string | null }[]
+  ingredients: { name: string; quantity: number | null; unit: string | null; comment?: string | null }[]
   steps: string[]
   notes?: string | null
 }

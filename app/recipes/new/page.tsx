@@ -54,8 +54,9 @@ export default function NewRecipePage() {
               quantity: ing.quantity != null ? String(ing.quantity) : "",
               unit_id: unitMatch?.id ?? "",
               optional: false,
+              comment: ing.comment ?? "",
             }
-          }) ?? [{ ingredient_id: "", ingredient_name: "", quantity: "", unit_id: "", optional: false }],
+          }) ?? [{ ingredient_id: "", ingredient_name: "", quantity: "", unit_id: "", optional: false, comment: "" }],
           steps: audioData.steps?.length ? audioData.steps : [""],
         }
         setInitialData(prefill)

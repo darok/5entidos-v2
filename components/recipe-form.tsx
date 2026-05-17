@@ -57,7 +57,7 @@ interface RecipeFormProps {
 // ── Helpers ───────────────────────────────────────────────────────
 
 function emptyIngredient(): IngredientRowValue {
-  return { _key: crypto.randomUUID(), ingredient_id: "", ingredient_name: "", quantity: "", unit_id: "", optional: false }
+  return { _key: crypto.randomUUID(), ingredient_id: "", ingredient_name: "", quantity: "", unit_id: "", optional: false, comment: "" }
 }
 
 function defaultForm(): RecipeFormData {
@@ -229,6 +229,7 @@ export function RecipeForm({
             quantity: c.quantity != null ? String(c.quantity) : "",
             unit_id: unit?.id ?? "",
             optional: false,
+            comment: "",
           })
           break
         }
@@ -352,6 +353,7 @@ export function RecipeForm({
           quantity: i.quantity ? parseFloat(i.quantity) : null,
           unit_id: i.unit_id || null,
           optional: i.optional,
+          comment: i.comment || null,
         })),
       steps: form.steps
         .map((s, idx) => ({ step_number: idx + 1, description: s.trim() }))
@@ -689,6 +691,7 @@ export function RecipeForm({
               name: i.ingredient_name,
               quantity: i.quantity,
               unit_name: allUnits.find((u) => u.id === i.unit_id)?.abbreviation ?? "",
+              comment: i.comment,
             })),
             steps: form.steps,
           }}
