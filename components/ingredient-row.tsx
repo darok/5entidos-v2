@@ -82,118 +82,121 @@ export function IngredientRow({
   const showCreate = nameInput.trim() && !exactMatch
 
   return (
-    <div className="flex gap-1.5 items-start">
-      {/* Ingredient name + comment */}
-      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-      <div ref={wrapperRef} className="relative w-full">
+    <div className="flex flex-col gap-1">
+      {/* Row 1: ingredient name | qty | unit | trash
+          Portrait mobile: name wraps to its own full-width line */}
+      <div className="flex gap-1.5 items-center flex-wrap">
+        <div ref={wrapperRef} className="relative flex-1 min-w-[160px] portrait:w-full portrait:flex-none">
+          <Input
+            value={nameInput}
+            onChange={(e) => { setNameInput(e.target.value); setShowDropdown(true) }}
+            onFocus={() => setShowDropdown(true)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return
+              e.preventDefault()
+              if (showCreate) { handleCreate() }
+              else if (suggestions.length > 0) { selectIngredient(suggestions[0]) }
+            }}
+            placeholder="Ingrediente…"
+            className={value.ingredient_name && !value.ingredient_id ? "pr-16" : ""}
+          />
+          {value.ingredient_name && !value.ingredient_id && (
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+              <Badge variant="secondary" className="text-xs px-1.5 py-0">Nuevo</Badge>
+            </span>
+          )}
+          {showDropdown && (suggestions.length > 0 || showCreate) && (
+            <div className="absolute z-20 mt-1 w-full rounded-md border bg-popover shadow-md">
+              {suggestions.map((ing) => (
+                <button
+                  key={ing.id}
+                  type="button"
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
+                  onMouseDown={() => selectIngredient(ing)}
+                >
+                  {ing.name}
+                </button>
+              ))}
+              {showCreate && (
+                <button
+                  type="button"
+                  className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-accent flex items-center gap-1"
+                  onMouseDown={handleCreate}
+                  disabled={creating}
+                >
+                  <PlusCircle className="h-3.5 w-3.5" />
+                  Crear &quot;{nameInput}&quot;
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Quantity */}
         <Input
-          value={nameInput}
-          onChange={(e) => { setNameInput(e.target.value); setShowDropdown(true) }}
-          onFocus={() => setShowDropdown(true)}
-          onKeyDown={(e) => {
-            if (e.key !== "Enter") return
-            e.preventDefault()
-            if (showCreate) { handleCreate() }
-            else if (suggestions.length > 0) { selectIngredient(suggestions[0]) }
-          }}
-          placeholder="Ingrediente…"
-          className={value.ingredient_name && !value.ingredient_id ? "pr-16" : ""}
+          type="number"
+          min={0}
+          step="any"
+          value={value.quantity}
+          onChange={(e) => onChange({ ...value, quantity: e.target.value })}
+          placeholder="Cant."
+          className="w-16"
         />
-        {value.ingredient_name && !value.ingredient_id && (
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
-            <Badge variant="secondary" className="text-xs px-1.5 py-0">Nuevo</Badge>
-          </span>
-        )}
-        {showDropdown && (suggestions.length > 0 || showCreate) && (
-          <div className="absolute z-20 mt-1 w-full rounded-md border bg-popover shadow-md">
-            {suggestions.map((ing) => (
-              <button
-                key={ing.id}
-                type="button"
-                className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
-                onMouseDown={() => selectIngredient(ing)}
-              >
-                {ing.name}
-              </button>
-            ))}
-            {showCreate && (
-              <button
-                type="button"
-                className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-accent flex items-center gap-1"
-                onMouseDown={handleCreate}
-                disabled={creating}
-              >
-                <PlusCircle className="h-3.5 w-3.5" />
-                Crear &quot;{nameInput}&quot;
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-      <Input
-        value={value.comment}
-        onChange={(e) => onChange({ ...value, comment: e.target.value })}
-        placeholder="aclaración…"
-        maxLength={20}
-        className="h-6 text-xs text-muted-foreground border-0 border-b rounded-none px-0 shadow-none focus-visible:ring-0"
-      />
-      </div>
 
-      {/* Quantity */}
-      <Input
-        type="number"
-        min={0}
-        step="any"
-        value={value.quantity}
-        onChange={(e) => onChange({ ...value, quantity: e.target.value })}
-        placeholder="Cant."
-        className="w-14"
-      />
-
-      {/* Unit */}
-      <Select
-        value={value.unit_id}
-        onValueChange={(v) => onChange({ ...value, unit_id: v })}
-      >
-        <SelectTrigger className="w-20">
-          {value.unit_id
-            ? <span className="truncate text-sm">{allUnits.find((u) => u.id === value.unit_id)?.abbreviation ?? "?"}</span>
-            : <span className="text-muted-foreground text-xs">Ud.</span>
-          }
-        </SelectTrigger>
-        <SelectContent>
-          {allUnits.map((u) => (
-            <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      {/* Optional */}
-      <div className="flex items-center gap-1.5 self-center">
-        <Checkbox
-          id={`opt-${value.ingredient_id || Math.random()}`}
-          checked={value.optional}
-          onCheckedChange={(checked) => onChange({ ...value, optional: !!checked })}
-        />
-        <Label
-          htmlFor={`opt-${value.ingredient_id || Math.random()}`}
-          className="text-xs text-muted-foreground cursor-pointer"
+        {/* Unit */}
+        <Select
+          value={value.unit_id}
+          onValueChange={(v) => onChange({ ...value, unit_id: v })}
         >
-          Opc.
-        </Label>
+          <SelectTrigger className="w-20">
+            {value.unit_id
+              ? <span className="truncate text-sm">{allUnits.find((u) => u.id === value.unit_id)?.abbreviation ?? "?"}</span>
+              : <span className="text-muted-foreground text-xs">Ud.</span>
+            }
+          </SelectTrigger>
+          <SelectContent>
+            {allUnits.map((u) => (
+              <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Remove */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onRemove}
+          className="text-muted-foreground hover:text-destructive"
+          aria-label="Eliminar ingrediente"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </div>
 
-      {/* Remove */}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        onClick={onRemove}
-        className="text-muted-foreground hover:text-destructive"
-        aria-label="Eliminar ingrediente"
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
+      {/* Row 2: comment + optional checkbox */}
+      <div className="flex gap-2 items-center">
+        <Input
+          value={value.comment}
+          onChange={(e) => onChange({ ...value, comment: e.target.value })}
+          placeholder="Aclaración…"
+          maxLength={30}
+          className="flex-1 h-6 text-xs border-0 border-b rounded-none px-0 shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/50"
+        />
+        <div className="flex items-center gap-1.5">
+          <Checkbox
+            id={`opt-${value.ingredient_id || Math.random()}`}
+            checked={value.optional}
+            onCheckedChange={(checked) => onChange({ ...value, optional: !!checked })}
+          />
+          <Label
+            htmlFor={`opt-${value.ingredient_id || Math.random()}`}
+            className="text-xs text-muted-foreground cursor-pointer"
+          >
+            Opc.
+          </Label>
+        </div>
+      </div>
     </div>
   )
 }
