@@ -8,7 +8,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const res = await fetch(`${process.env.AGENT_SERVER_URL}/recipe/start`, {
+    const agentUrl = process.env.AGENT_SERVER_URL ?? 'https://fiveentidos-v2.onrender.com'
+    const res = await fetch(`${agentUrl}/recipe/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
     // Return the stream URL from the server side so the client doesn't need NEXT_PUBLIC env vars
     return NextResponse.json({
       ...data,
-      streamUrl: `${process.env.AGENT_SERVER_URL}/recipe/stream/${data.jobId}`,
+      streamUrl: `${agentUrl}/recipe/stream/${data.jobId}`,
     })
   } catch (error) {
     console.error(error)

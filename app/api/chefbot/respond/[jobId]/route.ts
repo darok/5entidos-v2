@@ -11,8 +11,9 @@ export async function POST(
 
   try {
     const body = await request.json()
+    const agentUrl = process.env.AGENT_SERVER_URL ?? 'https://fiveentidos-v2.onrender.com'
     const res = await fetch(
-      `${process.env.AGENT_SERVER_URL}/recipe/respond/${params.jobId}`,
+      `${agentUrl}/recipe/respond/${params.jobId}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
