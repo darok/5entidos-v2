@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import got from 'got'
 import * as cheerio from 'cheerio'
 import { YoutubeTranscript } from 'youtube-transcript'
-import { critiqueDraft, reviewPreferences } from './subagents.js'
+import { critiqueDraft, reviewPreferences, stripNonRecipeContent } from './subagents.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -48,7 +48,8 @@ export async function fetchUrl(url) {
   })
   const $ = cheerio.load(body)
   $('script, style, nav, footer, header, aside, [class*="ad"], [class*="cookie"], [class*="popup"]').remove()
-  return $('body').text().replace(/\s+/g, ' ').trim().slice(0, 4000)
+  const raw = $('body').text().replace(/\s+/g, ' ').trim().slice(0, 6000)
+  return stripNonRecipeContent(raw)
 }
 
 // Fetches spoken transcript from a YouTube video URL. Returns error string if unavailable.
@@ -58,7 +59,8 @@ export async function fetchYoutubeTranscript(url) {
   try {
     const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'es' })
       .catch(() => YoutubeTranscript.fetchTranscript(videoId))
-    return transcript.map(t => t.text).join(' ').replace(/\s+/g, ' ').trim().slice(0, 4000)
+    const raw = transcript.map(t => t.text).join(' ').replace(/\s+/g, ' ').trim().slice(0, 6000)
+    return stripNonRecipeContent(raw)
   } catch (err) {
     return `Transcripción no disponible para este video: ${err.message}`
   }

@@ -25,6 +25,18 @@ Si no hay problemas, devolvé arrays vacíos.`,
   }
 }
 
+// Strips non-recipe content from raw page/transcript text without rewriting or synthesizing.
+// Haiku only deletes (nav, bios, SEO filler, anecdotes) — recipe text is kept verbatim.
+export async function stripNonRecipeContent(rawText) {
+  const response = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 800,
+    system: `Eliminá del texto todo lo que NO sea parte de la receta: navegación del sitio, bios del autor, relleno SEO, publicidad, historias irrelevantes, comentarios de lectores. Mantené absolutamente todo lo que sí sea parte de la receta — ingredientes con cantidades y unidades, pasos, tiempos, temperaturas, técnicas — exactamente como está escrito, sin parafrasear ni reestructurar. Si el texto ya es solo receta, devolvelo tal cual.`,
+    messages: [{ role: 'user', content: rawText }],
+  })
+  return response.content[0]?.text ?? rawText
+}
+
 // Internal sub-agent: reads the full conversation history and proposes STABLE preference
 // updates — not recipe-specific decisions. Called at end of session before saving.
 // Returns [{ key, value, reason }] — empty array if nothing worth saving.
