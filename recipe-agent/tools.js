@@ -32,7 +32,7 @@ export async function webSearch(query) {
     body: JSON.stringify({
       api_key: process.env.TAVILY_API_KEY,
       query,
-      max_results: 6,
+      max_results: 4,
       search_depth: 'advanced',
     }),
   })
@@ -48,7 +48,7 @@ export async function fetchUrl(url) {
   })
   const $ = cheerio.load(body)
   $('script, style, nav, footer, header, aside, [class*="ad"], [class*="cookie"], [class*="popup"]').remove()
-  return $('body').text().replace(/\s+/g, ' ').trim().slice(0, 8000)
+  return $('body').text().replace(/\s+/g, ' ').trim().slice(0, 4000)
 }
 
 // Fetches spoken transcript from a YouTube video URL. Returns error string if unavailable.
@@ -58,7 +58,7 @@ export async function fetchYoutubeTranscript(url) {
   try {
     const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'es' })
       .catch(() => YoutubeTranscript.fetchTranscript(videoId))
-    return transcript.map(t => t.text).join(' ').replace(/\s+/g, ' ').trim().slice(0, 8000)
+    return transcript.map(t => t.text).join(' ').replace(/\s+/g, ' ').trim().slice(0, 4000)
   } catch (err) {
     return `Transcripción no disponible para este video: ${err.message}`
   }
@@ -112,11 +112,12 @@ export async function saveRecipe(jobId, recipe, conversationHistory, emit) {
   const filename = `${slug}.json`
   await writeFile(join(dir, filename), JSON.stringify(recipe, null, 2), 'utf8')
 
-  // Run preferences reviewer sub-agent with conversation history
-  const historyText = conversationHistory
-    .map(m => `${m.role}: ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`)
+  // Only pass user text messages to the reviewer — tool results are irrelevant for extracting preferences
+  const userMessages = conversationHistory
+    .filter(m => m.role === 'user' && typeof m.content === 'string')
+    .map(m => m.content)
     .join('\n\n')
-  const proposed = await reviewPreferences(historyText)
+  const proposed = await reviewPreferences(userMessages)
 
   if (proposed.length > 0) {
     emit({ type: 'preferences', proposed })

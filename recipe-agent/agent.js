@@ -173,6 +173,29 @@ const TOOLS = [
 
 // ── Agent loop ────────────────────────────────────────────────────
 
+// Truncates large tool_result content in old messages to reduce cumulative context growth.
+// Keeps the last KEEP_FRESH messages untouched. Only truncates tool_result blocks —
+// never user or assistant text — so check_in answers are never lost.
+function pruneMessages(messages) {
+  const KEEP_FRESH = 6
+  const MAX_OLD = 400
+
+  if (messages.length <= KEEP_FRESH) return messages
+
+  return messages.map((msg, i) => {
+    if (i >= messages.length - KEEP_FRESH) return msg
+    if (!Array.isArray(msg.content)) return msg
+
+    const pruned = msg.content.map(block => {
+      if (block.type !== 'tool_result') return block
+      const text = typeof block.content === 'string' ? block.content : JSON.stringify(block.content)
+      if (text.length <= MAX_OLD) return block
+      return { ...block, content: text.slice(0, MAX_OLD) + ' [truncado]' }
+    })
+    return { ...msg, content: pruned }
+  })
+}
+
 // Runs the full research-draft-iterate-save loop for a single recipe request.
 export async function runAgent(jobId, prompt, emit) {
   emit({ type: 'thinking', text: `Iniciando investigación: ${prompt}` })
@@ -181,11 +204,17 @@ export async function runAgent(jobId, prompt, emit) {
 
   while (true) {
     const response = await anthropic.messages.create({
-      model: 'claude-opus-4-6',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4096,
-      system: SYSTEM_PROMPT,
+      system: [
+        {
+          type: 'text',
+          text: SYSTEM_PROMPT,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
       tools: TOOLS,
-      messages,
+      messages: pruneMessages(messages),
     })
 
     messages.push({ role: 'assistant', content: response.content })
