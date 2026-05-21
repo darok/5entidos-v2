@@ -75,10 +75,9 @@ export default function ChefbotPage() {
     setActivityLog(prev => [...prev, line])
   }, [])
 
-  // Open SSE connection for a given jobId
-  const openStream = useCallback((id: string) => {
-    const base = process.env.NEXT_PUBLIC_AGENT_SERVER_URL
-    const es = new EventSource(`${base}/recipe/stream/${id}`)
+  // Open SSE connection using the URL returned by the start route
+  const openStream = useCallback((streamUrl: string) => {
+    const es = new EventSource(streamUrl)
     esRef.current = es
 
     es.onmessage = (e) => {
@@ -143,9 +142,9 @@ export default function ChefbotPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: prompt.trim() }),
       })
-      const { jobId: id } = await res.json()
+      const { jobId: id, streamUrl } = await res.json()
       setJobId(id)
-      openStream(id)
+      openStream(streamUrl)
     } catch {
       setErrorMsg("No se pudo conectar con el agente")
       setPhase("error")

@@ -13,7 +13,12 @@ export async function POST(request: NextRequest) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
-    return NextResponse.json(await res.json())
+    const data = await res.json()
+    // Return the stream URL from the server side so the client doesn't need NEXT_PUBLIC env vars
+    return NextResponse.json({
+      ...data,
+      streamUrl: `${process.env.AGENT_SERVER_URL}/recipe/stream/${data.jobId}`,
+    })
   } catch (error) {
     console.error(error)
     return NextResponse.json({ error: "Failed to start agent" }, { status: 500 })
