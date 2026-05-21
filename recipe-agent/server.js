@@ -5,7 +5,8 @@ import { runAgent } from './agent.js'
 import { pendingResponses } from './tools.js'
 
 const app = express()
-app.use(cors({ origin: process.env.ALLOWED_ORIGIN ?? 'http://localhost:3000' }))
+// Reflect all origins — SSE is read-only and jobIds are unguessable UUIDs
+app.use(cors({ origin: true, credentials: false }))
 app.use(express.json())
 
 // ── In-memory state ───────────────────────────────────────────────

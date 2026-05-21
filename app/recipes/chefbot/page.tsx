@@ -77,7 +77,8 @@ export default function ChefbotPage() {
 
   // Open SSE connection for a given jobId
   const openStream = useCallback((id: string) => {
-    const es = new EventSource(`/api/chefbot/stream/${id}`)
+    const base = process.env.NEXT_PUBLIC_AGENT_SERVER_URL
+    const es = new EventSource(`${base}/recipe/stream/${id}`)
     esRef.current = es
 
     es.onmessage = (e) => {
