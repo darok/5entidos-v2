@@ -34,9 +34,13 @@ interface ProposedPref {
   reason: string
 }
 
+interface ParsedQuestion {
+  question: string
+  options: { label: string; description: string }[]
+}
+
 // ── Helpers ───────────────────────────────────────────────────────
 
-// Shows hostname + path, truncated for the URL panel
 function formatUrl(url: string): string {
   try {
     const { hostname, pathname } = new URL(url)
@@ -45,6 +49,89 @@ function formatUrl(url: string): string {
   } catch {
     return url
   }
+}
+
+// Parses agent question text with "- **Label**: description" options (inline or newline-separated)
+function parseQuestion(text: string): ParsedQuestion {
+  const optionRegex = /-\s+\*\*([^*]+)\*\*[:\s]+([^-\n]+)/g
+  const options: { label: string; description: string }[] = []
+  let match: RegExpExecArray | null
+  while ((match = optionRegex.exec(text)) !== null) {
+    options.push({ label: match[1].trim(), description: match[2].trim() })
+  }
+  const question = text.replace(/-\s+\*\*[^*]+\*\*[:\s]+[^-\n]+/g, "").replace(/\s+/g, " ").trim()
+  return { question, options }
+}
+
+// ── Sub-components ────────────────────────────────────────────────
+
+// Renders a question with option buttons + free-text fallback — matches Claude Code style
+function QuestionCard({
+  text,
+  onReply,
+  autoFocus = true,
+}: {
+  text: string
+  onReply: (answer: string) => void
+  autoFocus?: boolean
+}) {
+  const [input, setInput] = useState("")
+  const { question, options } = parseQuestion(text)
+
+  return (
+    <div className="border rounded-lg p-5 mb-6 space-y-4">
+      <p className="font-medium">{question}</p>
+      {options.length > 0 && (
+        <div className="space-y-2">
+          {options.map((opt, i) => (
+            <button
+              key={i}
+              onClick={() => onReply(opt.label)}
+              className="w-full text-left border rounded-lg px-4 py-3 hover:bg-muted transition-colors text-sm"
+            >
+              <span className="font-semibold">{opt.label}</span>
+              {opt.description && (
+                <span className="text-muted-foreground ml-2">— {opt.description}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-3">
+        <Input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          placeholder={options.length > 0 ? "Otra respuesta…" : "Tu respuesta…"}
+          onKeyDown={e => e.key === "Enter" && input.trim() && onReply(input)}
+          autoFocus={autoFocus}
+          className="flex-1"
+        />
+        <Button onClick={() => onReply(input)} disabled={!input.trim()}>
+          <Send className="h-4 w-4 mr-1" /> Enviar
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// Read-only version of a question for the draft view
+function QuestionDisplay({ text }: { text: string }) {
+  const { question, options } = parseQuestion(text)
+  return (
+    <div className="text-sm space-y-1">
+      <p className="font-medium text-foreground">{question}</p>
+      {options.length > 0 && (
+        <ul className="space-y-0.5 pl-2">
+          {options.map((opt, i) => (
+            <li key={i} className="text-muted-foreground">
+              <span className="font-medium text-foreground">{opt.label}</span>
+              {opt.description && ` — ${opt.description}`}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
 }
 
 // ── Main component ────────────────────────────────────────────────
@@ -66,7 +153,6 @@ export default function ChefbotPage() {
   const activityEndRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
 
-  // Auto-scroll activity feed on new entries
   useEffect(() => {
     activityEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [activityLog])
@@ -75,7 +161,6 @@ export default function ChefbotPage() {
     setActivityLog(prev => [...prev, line])
   }, [])
 
-  // Open SSE connection using the URL returned by the start route
   const openStream = useCallback((streamUrl: string) => {
     const es = new EventSource(streamUrl)
     esRef.current = es
@@ -203,17 +288,11 @@ export default function ChefbotPage() {
           }}
         />
         <div className="flex flex-col gap-2">
-          <Button
-            onClick={startAgent}
-            disabled={phase !== "idle" || !prompt.trim()}
-            className="h-full"
-          >
+          <Button onClick={startAgent} disabled={phase !== "idle" || !prompt.trim()} className="h-full">
             Investigar
           </Button>
           {phase !== "idle" && (
-            <Button variant="outline" onClick={handleReset} size="sm">
-              Nueva
-            </Button>
+            <Button variant="outline" onClick={handleReset} size="sm">Nueva</Button>
           )}
         </div>
       </div>
@@ -221,7 +300,6 @@ export default function ChefbotPage() {
       {/* Two-column activity area */}
       {hasActivity && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          {/* Left: activity feed */}
           <div className="border rounded-lg p-4">
             <h2 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
               <Search className="h-4 w-4" /> Actividad
@@ -234,7 +312,6 @@ export default function ChefbotPage() {
             </div>
           </div>
 
-          {/* Right: visited URLs panel */}
           <div className="border rounded-lg p-4">
             <h2 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
               <Link2 className="h-4 w-4" /> Fuentes consultadas
@@ -244,13 +321,8 @@ export default function ChefbotPage() {
                 <p className="text-sm text-muted-foreground italic">Ninguna todavía</p>
               ) : (
                 visitedUrls.map((url, i) => (
-                  <a
-                    key={i}
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block text-sm text-brand-violet hover:underline break-all leading-snug"
-                  >
+                  <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                    className="block text-sm text-brand-violet hover:underline break-all leading-snug">
                     {formatUrl(url)}
                   </a>
                 ))
@@ -270,22 +342,7 @@ export default function ChefbotPage() {
 
       {/* Question phase */}
       {phase === "question" && (
-        <div className="border rounded-lg p-5 mb-6 space-y-4">
-          <p className="font-medium">{currentQuestion}</p>
-          <div className="flex gap-3">
-            <Input
-              value={replyInput}
-              onChange={e => setReplyInput(e.target.value)}
-              placeholder="Tu respuesta…"
-              className="flex-1"
-              onKeyDown={e => e.key === "Enter" && sendReply(replyInput)}
-              autoFocus
-            />
-            <Button onClick={() => sendReply(replyInput)} disabled={!replyInput.trim()}>
-              <Send className="h-4 w-4 mr-1" /> Responder
-            </Button>
-          </div>
-        </div>
+        <QuestionCard text={currentQuestion} onReply={sendReply} />
       )}
 
       {/* Draft phase */}
@@ -329,23 +386,20 @@ export default function ChefbotPage() {
             </div>
           )}
 
-          {/* Agent questions */}
-          {draftQuestions.length > 0 && (
-            <div>
-              <h3 className="font-semibold mb-1 text-sm">Preguntas del agente</h3>
+          {/* Decisions first, then questions */}
+          {draftNotes.length > 0 && (
+            <div className="space-y-1">
+              <h3 className="font-semibold text-sm">Decisiones tomadas</h3>
               <ul className="text-sm space-y-1 list-disc list-inside text-muted-foreground">
-                {draftQuestions.map((q, i) => <li key={i}>{q}</li>)}
+                {draftNotes.map((n, i) => <li key={i}>{n}</li>)}
               </ul>
             </div>
           )}
 
-          {/* Agent notes / decisions */}
-          {draftNotes.length > 0 && (
-            <div>
-              <h3 className="font-semibold mb-1 text-sm">Decisiones tomadas</h3>
-              <ul className="text-sm space-y-1 list-disc list-inside text-muted-foreground">
-                {draftNotes.map((n, i) => <li key={i}>{n}</li>)}
-              </ul>
+          {draftQuestions.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="font-semibold text-sm">Preguntas del agente</h3>
+              {draftQuestions.map((q, i) => <QuestionDisplay key={i} text={q} />)}
             </div>
           )}
 
@@ -358,10 +412,7 @@ export default function ChefbotPage() {
               className="resize-none h-20"
             />
             <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={() => sendReply(replyInput || "Sin cambios adicionales")}
-              >
+              <Button variant="outline" onClick={() => sendReply(replyInput || "Sin cambios adicionales")}>
                 <Send className="h-4 w-4 mr-1" /> Enviar feedback
               </Button>
               <Button onClick={() => sendReply("guardalo")}>
@@ -391,9 +442,7 @@ export default function ChefbotPage() {
             <Button onClick={() => sendReply("sí")}>
               <CheckCircle2 className="h-4 w-4 mr-1" /> Confirmar todo
             </Button>
-            <Button variant="outline" onClick={() => sendReply("no")}>
-              Descartar
-            </Button>
+            <Button variant="outline" onClick={() => sendReply("no")}>Descartar</Button>
           </div>
         </div>
       )}
@@ -419,9 +468,7 @@ export default function ChefbotPage() {
             <p className="font-medium text-red-800 dark:text-red-200">Error</p>
             <p className="text-sm text-red-700 dark:text-red-300">{errorMsg}</p>
           </div>
-          <Button variant="outline" size="sm" onClick={handleReset}>
-            Reintentar
-          </Button>
+          <Button variant="outline" size="sm" onClick={handleReset}>Reintentar</Button>
         </div>
       )}
     </div>

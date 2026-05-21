@@ -226,7 +226,19 @@ export async function runAgent(jobId, prompt, emit) {
       }
     }
 
-    if (response.stop_reason === 'end_turn') break
+    if (response.stop_reason === 'end_turn') {
+      // If the agent ended with a question instead of using check_in, handle it so the loop doesn't freeze
+      const textContent = response.content
+        .filter(b => b.type === 'text' && b.text.trim())
+        .map(b => b.text.trim())
+        .join('\n')
+      if (textContent && (textContent.includes('¿') || textContent.trimEnd().endsWith('?'))) {
+        const answer = await checkIn(jobId, textContent, emit)
+        messages.push({ role: 'user', content: answer })
+        continue
+      }
+      break
+    }
 
     if (response.stop_reason === 'tool_use') {
       const toolResults = []
