@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { useAuth } from "@/components/providers"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
-import { PlusCircle, Settings, LogOut, Mic, Menu } from "lucide-react"
+import { PlusCircle, Settings, LogOut, Mic, Menu, Bot } from "lucide-react"
 
 // Top navigation bar — scroll-aware: taller with larger logo at page top, compact on scroll
 export function Header() {
@@ -89,6 +89,11 @@ export function Header() {
                   </Link>
                 </Button>
                 <Button asChild variant="ghost" size="icon">
+                  <Link href="/recipes/chefbot" aria-label="Chefbot">
+                    <Bot className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button asChild variant="ghost" size="icon">
                   <Link href="/settings" aria-label="Configuración">
                     <Settings className="h-4 w-4" />
                   </Link>
@@ -112,6 +117,10 @@ export function Header() {
                     <Link href="/recipes/audio" onClick={() => setMenuOpen(false)}
                       className="flex items-center gap-2 px-3 py-2 text-sm rounded hover:bg-muted">
                       <Mic className="h-4 w-4" /> Receta por audio
+                    </Link>
+                    <Link href="/recipes/chefbot" onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2 px-3 py-2 text-sm rounded hover:bg-muted">
+                      <Bot className="h-4 w-4" /> Chefbot
                     </Link>
                     <Link href="/settings" onClick={() => setMenuOpen(false)}
                       className="flex items-center gap-2 px-3 py-2 text-sm rounded hover:bg-muted">

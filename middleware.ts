@@ -8,6 +8,7 @@ function isOwnerRoute(pathname: string): boolean {
   if (pathname === "/recipes/new") return true
   if (pathname.startsWith("/recipes/") && pathname.endsWith("/edit")) return true
   if (pathname === "/recipes/audio") return true
+  if (pathname === "/recipes/chefbot") return true
   if (pathname === "/settings") return true
   return false
 }
@@ -54,6 +55,7 @@ export const config = {
     "/recipes/new",
     "/recipes/:path*/edit",
     "/recipes/audio",
+    "/recipes/chefbot",
     "/settings",
   ],
 }

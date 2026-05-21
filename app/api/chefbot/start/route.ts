@@ -1,0 +1,21 @@
+import { NextRequest, NextResponse } from "next/server"
+import { createClient } from "@/lib/supabase/server"
+
+export async function POST(request: NextRequest) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  try {
+    const body = await request.json()
+    const res = await fetch(`${process.env.AGENT_SERVER_URL}/recipe/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    return NextResponse.json(await res.json())
+  } catch (error) {
+    console.error(error)
+    return NextResponse.json({ error: "Failed to start agent" }, { status: 500 })
+  }
+}
