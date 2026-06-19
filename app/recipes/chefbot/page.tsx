@@ -8,7 +8,7 @@ import { Bot, Search, Link2, Send, CheckCircle2, AlertCircle } from "lucide-reac
 
 // ── Types ─────────────────────────────────────────────────────────
 
-type Phase = "idle" | "running" | "question" | "draft" | "preferences" | "done" | "error"
+type Phase = "idle" | "running" | "saving" | "question" | "draft" | "preferences" | "done" | "error"
 
 interface AgentIngredient {
   name: string
@@ -51,15 +51,19 @@ function formatUrl(url: string): string {
   }
 }
 
-// Resolves ingredient/unit names to catalog IDs (creating entries if missing),
-// then POSTs the recipe to the app's API. Returns the new recipe's ID.
-async function saveToApp(recipe: AgentRecipe): Promise<string> {
+// Resolves ingredient/unit names to catalog IDs (never creates new units),
+// then POSTs the recipe to the app's API.
+// Returns { id, unmatchedUnits } — unmatchedUnits are unit names that had no catalog match
+// and were folded into the ingredient comment instead.
+async function saveToApp(recipe: AgentRecipe): Promise<{ id: string; unmatchedUnits: string[] }> {
   const [ingRes, unitRes] = await Promise.all([
     fetch("/api/ingredients"),
     fetch("/api/units"),
   ])
   const allIngredients: { id: string; name: string }[] = await ingRes.json()
   const allUnits: { id: string; name: string; abbreviation: string }[] = await unitRes.json()
+
+  const unmatchedUnits: string[] = []
 
   const ingredients = await Promise.all(
     recipe.ingredients.map(async (ing) => {
@@ -75,16 +79,14 @@ async function saveToApp(recipe: AgentRecipe): Promise<string> {
       }
 
       const unitLower = ing.unit.toLowerCase().trim()
-      let unit = allUnits.find(
+      const unit = allUnits.find(
         (u) => u.name.toLowerCase() === unitLower || u.abbreviation.toLowerCase() === unitLower
       )
+
+      let comment = ing.comment ?? null
       if (!unit && unitLower) {
-        const r = await fetch("/api/units", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: ing.unit.trim(), abbreviation: ing.unit.trim() }),
-        })
-        unit = await r.json()
+        unmatchedUnits.push(ing.unit.trim())
+        comment = [ing.unit.trim(), ing.comment].filter(Boolean).join(" — ") || null
       }
 
       return {
@@ -92,21 +94,18 @@ async function saveToApp(recipe: AgentRecipe): Promise<string> {
         quantity: ing.quantity,
         unit_id: unit?.id ?? null,
         optional: false,
-        comment: ing.comment ?? null,
+        comment,
       }
     })
   )
-
-  const description = recipe.notes
-    ? `${recipe.description}\n\nNotas: ${recipe.notes}`
-    : recipe.description
 
   const res = await fetch("/api/recipes", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       title: recipe.title,
-      description,
+      description: recipe.description,
+      notes: recipe.notes ?? null,
       prep_time: recipe.prep_time,
       servings: recipe.servings,
       ingredients,
@@ -116,7 +115,7 @@ async function saveToApp(recipe: AgentRecipe): Promise<string> {
   })
   if (!res.ok) throw new Error("Failed to save recipe to app")
   const created = await res.json()
-  return created.id as string
+  return { id: created.id as string, unmatchedUnits }
 }
 
 // Parses agent question text with "- **Label**: description" options (inline or newline-separated)
@@ -218,6 +217,7 @@ export default function ChefbotPage() {
   const [replyInput, setReplyInput] = useState("")
   const [errorMsg, setErrorMsg] = useState("")
   const [savedRecipeId, setSavedRecipeId] = useState<string | null>(null)
+  const [unmatchedUnits, setUnmatchedUnits] = useState<string[]>([])
 
   const activityEndRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
@@ -268,10 +268,12 @@ export default function ChefbotPage() {
         case "done": {
           const agentRecipe = event.recipe as AgentRecipe
           es.close()
+          setPhase("saving")
           ;(async () => {
             try {
-              const id = await saveToApp(agentRecipe)
+              const { id, unmatchedUnits: unmatched } = await saveToApp(agentRecipe)
               setSavedRecipeId(id)
+              setUnmatchedUnits(unmatched)
             } catch {
               // recipe saved on agent server; app save failed silently
             }
@@ -300,16 +302,22 @@ export default function ChefbotPage() {
     setVisitedUrls([])
     setPhase("running")
 
+    const wakeupTimer = setTimeout(() => {
+      appendLog("Chefbot está iniciando (puede tardar hasta 30s)…")
+    }, 9000)
+
     try {
       const res = await fetch("/api/chefbot/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: prompt.trim() }),
       })
+      clearTimeout(wakeupTimer)
       const { jobId: id, streamUrl } = await res.json()
       setJobId(id)
       openStream(streamUrl)
     } catch {
+      clearTimeout(wakeupTimer)
       setErrorMsg("No se pudo conectar con el agente")
       setPhase("error")
     }
@@ -340,9 +348,10 @@ export default function ChefbotPage() {
     setReplyInput("")
     setErrorMsg("")
     setSavedRecipeId(null)
+    setUnmatchedUnits([])
   }
 
-  const isRunning = phase === "running"
+  const isRunning = phase === "running" || phase === "saving"
   const hasActivity = activityLog.length > 0 || visitedUrls.length > 0
 
   return (
@@ -412,11 +421,11 @@ export default function ChefbotPage() {
         </div>
       )}
 
-      {/* Running indicator */}
-      {phase === "running" && (
+      {/* Running / saving indicator */}
+      {(phase === "running" || phase === "saving") && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6 animate-pulse">
           <div className="h-2 w-2 rounded-full bg-brand-violet" />
-          Investigando…
+          {phase === "saving" ? "Guardando en 5entidos…" : "Investigando…"}
         </div>
       )}
 
@@ -529,18 +538,30 @@ export default function ChefbotPage() {
 
       {/* Done phase */}
       {phase === "done" && (
-        <div className="border rounded-lg p-5 mb-6 flex items-center gap-3 bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800">
-          <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
-          <div>
-            <p className="font-medium text-green-800 dark:text-green-200">Receta guardada</p>
-            <p className="text-sm text-green-700 dark:text-green-300">
-              {savedRecipeId ? (
-                <>Guardada en 5entidos. <a href={`/recipes/${savedRecipeId}`} className="underline font-medium">Ver receta →</a></>
-              ) : (
-                "Guardada en el servidor del agente."
-              )}
-            </p>
+        <div className="border rounded-lg p-5 mb-6 space-y-2 bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
+            <div>
+              <p className="font-medium text-green-800 dark:text-green-200">Receta guardada</p>
+              <p className="text-sm text-green-700 dark:text-green-300">
+                {savedRecipeId ? (
+                  <>
+                    Guardada en 5entidos.{" "}
+                    <a href={`/recipes/${savedRecipeId}`} className="underline font-medium">Ver →</a>
+                    {" · "}
+                    <a href={`/recipes/${savedRecipeId}/edit`} className="underline font-medium">Editar →</a>
+                  </>
+                ) : (
+                  "Guardada en el servidor del agente."
+                )}
+              </p>
+            </div>
           </div>
+          {unmatchedUnits.length > 0 && (
+            <p className="text-sm text-amber-700 dark:text-amber-400 pl-8">
+              Unidades sin mapear, quedaron en el comentario del ingrediente: {unmatchedUnits.join(", ")}. Podés corregirlas editando la receta.
+            </p>
+          )}
         </div>
       )}
 

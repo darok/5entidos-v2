@@ -49,6 +49,7 @@ export interface RecipePayload {
   prep_time?: string | null
   servings?: number | null
   rating?: number | null
+  notes?: string | null
 }
 
 export interface IngredientPayload {

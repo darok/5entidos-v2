@@ -12,6 +12,7 @@ import { RATING_LABELS } from "@/types"
 import type { Recipe, Tag, Ingredient } from "@/types"
 
 type ViewMode = "mosaic" | "list" | "rank"
+type SortMode = "newest" | "oldest" | "rating"
 
 const RANK_TIERS: { rating: number | null; stars: string }[] = [
   { rating: 4, stars: "★★★★" },
@@ -43,6 +44,7 @@ export function SearchFilters({ recipes, allTags, allIngredients }: SearchFilter
   const [query, setQuery] = useState("")
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set())
   const [selectedIngredientIds, setSelectedIngredientIds] = useState<Set<string>>(new Set())
+  const [sort, setSort] = useState<SortMode>("newest")
 
   function setAndPersistViewMode(mode: ViewMode) {
     setViewMode(mode)
@@ -90,7 +92,7 @@ export function SearchFilters({ recipes, allTags, allIngredients }: SearchFilter
   }
 
   const filtered = useMemo(() => {
-    return localRecipes.filter((recipe) => {
+    const matches = localRecipes.filter((recipe) => {
       if (query && !recipe.title.toLowerCase().includes(query.toLowerCase())) return false
 
       if (selectedTagIds.size > 0) {
@@ -109,7 +111,13 @@ export function SearchFilters({ recipes, allTags, allIngredients }: SearchFilter
 
       return true
     })
-  }, [localRecipes, query, selectedTagIds, selectedIngredientIds])
+
+    return [...matches].sort((a, b) => {
+      if (sort === "oldest") return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      if (sort === "rating") return (b.rating ?? 0) - (a.rating ?? 0)
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+  }, [localRecipes, query, selectedTagIds, selectedIngredientIds, sort])
 
   const hasFilters = query || selectedTagIds.size > 0 || selectedIngredientIds.size > 0
 
@@ -128,7 +136,17 @@ export function SearchFilters({ recipes, allTags, allIngredients }: SearchFilter
             <X className="h-4 w-4" />
           </Button>
         )}
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-2">
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortMode)}
+            className="text-sm border rounded px-2 py-1 bg-background"
+          >
+            <option value="newest">Más nuevas</option>
+            <option value="oldest">Más antiguas</option>
+            <option value="rating">Mejor calificadas</option>
+          </select>
+          <div className="flex items-center gap-1">
           {(["mosaic", "list", "rank"] as const).map((mode) => (
             <Button
               key={mode}
@@ -145,6 +163,7 @@ export function SearchFilters({ recipes, allTags, allIngredients }: SearchFilter
               {mode === "rank" && <Trophy className="h-4 w-4" />}
             </Button>
           ))}
+          </div>
         </div>
       </div>
 
