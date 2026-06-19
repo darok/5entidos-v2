@@ -51,6 +51,74 @@ function formatUrl(url: string): string {
   }
 }
 
+// Resolves ingredient/unit names to catalog IDs (creating entries if missing),
+// then POSTs the recipe to the app's API. Returns the new recipe's ID.
+async function saveToApp(recipe: AgentRecipe): Promise<string> {
+  const [ingRes, unitRes] = await Promise.all([
+    fetch("/api/ingredients"),
+    fetch("/api/units"),
+  ])
+  const allIngredients: { id: string; name: string }[] = await ingRes.json()
+  const allUnits: { id: string; name: string; abbreviation: string }[] = await unitRes.json()
+
+  const ingredients = await Promise.all(
+    recipe.ingredients.map(async (ing) => {
+      const nameLower = ing.name.toLowerCase().trim()
+      let ingredient = allIngredients.find((e) => e.name.toLowerCase() === nameLower)
+      if (!ingredient) {
+        const r = await fetch("/api/ingredients", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: ing.name.trim() }),
+        })
+        ingredient = await r.json()
+      }
+
+      const unitLower = ing.unit.toLowerCase().trim()
+      let unit = allUnits.find(
+        (u) => u.name.toLowerCase() === unitLower || u.abbreviation.toLowerCase() === unitLower
+      )
+      if (!unit && unitLower) {
+        const r = await fetch("/api/units", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: ing.unit.trim(), abbreviation: ing.unit.trim() }),
+        })
+        unit = await r.json()
+      }
+
+      return {
+        ingredient_id: ingredient!.id,
+        quantity: ing.quantity,
+        unit_id: unit?.id ?? null,
+        optional: false,
+        comment: ing.comment ?? null,
+      }
+    })
+  )
+
+  const description = recipe.notes
+    ? `${recipe.description}\n\nNotas: ${recipe.notes}`
+    : recipe.description
+
+  const res = await fetch("/api/recipes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: recipe.title,
+      description,
+      prep_time: recipe.prep_time,
+      servings: recipe.servings,
+      ingredients,
+      steps: recipe.steps.map((s, i) => ({ step_number: i + 1, description: s })),
+      tag_ids: [],
+    }),
+  })
+  if (!res.ok) throw new Error("Failed to save recipe to app")
+  const created = await res.json()
+  return created.id as string
+}
+
 // Parses agent question text with "- **Label**: description" options (inline or newline-separated)
 function parseQuestion(text: string): ParsedQuestion {
   const optionRegex = /-\s+\*\*([^*]+)\*\*[:\s]+([^-\n]+)/g
@@ -149,6 +217,7 @@ export default function ChefbotPage() {
   const [proposedPrefs, setProposedPrefs] = useState<ProposedPref[]>([])
   const [replyInput, setReplyInput] = useState("")
   const [errorMsg, setErrorMsg] = useState("")
+  const [savedRecipeId, setSavedRecipeId] = useState<string | null>(null)
 
   const activityEndRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
@@ -196,10 +265,20 @@ export default function ChefbotPage() {
           setProposedPrefs(event.proposed as ProposedPref[])
           setPhase("preferences")
           break
-        case "done":
-          setPhase("done")
+        case "done": {
+          const agentRecipe = event.recipe as AgentRecipe
           es.close()
+          ;(async () => {
+            try {
+              const id = await saveToApp(agentRecipe)
+              setSavedRecipeId(id)
+            } catch {
+              // recipe saved on agent server; app save failed silently
+            }
+            setPhase("done")
+          })()
           break
+        }
         case "error":
           setErrorMsg((event.message as string) || "Error desconocido")
           setPhase("error")
@@ -260,6 +339,7 @@ export default function ChefbotPage() {
     setProposedPrefs([])
     setReplyInput("")
     setErrorMsg("")
+    setSavedRecipeId(null)
   }
 
   const isRunning = phase === "running"
@@ -454,7 +534,11 @@ export default function ChefbotPage() {
           <div>
             <p className="font-medium text-green-800 dark:text-green-200">Receta guardada</p>
             <p className="text-sm text-green-700 dark:text-green-300">
-              La receta fue guardada en el servidor del agente. Podés iniciar una nueva investigación.
+              {savedRecipeId ? (
+                <>Guardada en 5entidos. <a href={`/recipes/${savedRecipeId}`} className="underline font-medium">Ver receta →</a></>
+              ) : (
+                "Guardada en el servidor del agente."
+              )}
             </p>
           </div>
         </div>
