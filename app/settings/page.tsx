@@ -573,6 +573,95 @@ function IngredientsTab() {
   )
 }
 
+// ── Otros tab ─────────────────────────────────────────────────────
+
+interface CleanupResult {
+  total: number
+  referenced: number
+  orphaned: string[]
+  sql: string | null
+}
+
+function OtrosTab() {
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<CleanupResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  async function handleCheck() {
+    setLoading(true)
+    setError(null)
+    setResult(null)
+    try {
+      const res = await fetch("/api/admin/cleanup-images")
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Error desconocido")
+      setResult(data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleCopy() {
+    if (!result?.sql) return
+    await navigator.clipboard.writeText(result.sql)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-3">
+        <h3 className="font-semibold">Limpieza de imágenes</h3>
+        <p className="text-sm text-muted-foreground">
+          Busca archivos en el bucket <code className="bg-muted px-1 rounded text-xs">recipe-images</code> que no están referenciados por ninguna receta.
+          El SQL generado se pega en el <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="underline">Editor SQL de Supabase</a>.
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleCheck}
+          disabled={loading}
+        >
+          {loading ? "Buscando…" : "Buscar imágenes huérfanas"}
+        </Button>
+
+        {error && <p className="text-sm text-destructive">{error}</p>}
+
+        {result && (
+          <div className="space-y-3">
+            <p className="text-sm">
+              <span className="font-medium">{result.total}</span> archivos en bucket ·{" "}
+              <span className="font-medium">{result.referenced}</span> referenciados ·{" "}
+              <span className="font-medium">{result.orphaned.length}</span> huérfanos
+            </p>
+
+            {result.orphaned.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay archivos huérfanos.</p>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">SQL para pegar en Supabase</p>
+                  <Button type="button" variant="ghost" size="sm" onClick={handleCopy}>
+                    {copied ? <Check className="h-3.5 w-3.5 mr-1 text-green-600" /> : null}
+                    {copied ? "Copiado" : "Copiar"}
+                  </Button>
+                </div>
+                <pre className="bg-muted rounded-md p-3 text-xs overflow-x-auto whitespace-pre-wrap break-all select-all">
+                  {result.sql}
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -584,10 +673,12 @@ export default function SettingsPage() {
           <TabsTrigger value="tags">Tags</TabsTrigger>
           <TabsTrigger value="units">Unidades</TabsTrigger>
           <TabsTrigger value="ingredients">Ingredientes</TabsTrigger>
+          <TabsTrigger value="otros">Otros</TabsTrigger>
         </TabsList>
         <TabsContent value="tags" className="pt-4"><TagsTab /></TabsContent>
         <TabsContent value="units" className="pt-4"><UnitsTab /></TabsContent>
         <TabsContent value="ingredients" className="pt-4"><IngredientsTab /></TabsContent>
+        <TabsContent value="otros" className="pt-4"><OtrosTab /></TabsContent>
       </Tabs>
     </div>
   )
