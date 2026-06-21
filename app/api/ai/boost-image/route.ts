@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import OpenAI, { toFile } from "openai"
+import sharp from "sharp"
 
 // gpt-image-1 can take 20-30s — requires Vercel Pro for full timeout; Hobby plan may cut at 10s
 export const maxDuration = 60
@@ -21,11 +22,10 @@ export async function POST(request: NextRequest) {
     const fetched = await fetch(imageUrl)
     if (!fetched.ok) return NextResponse.json({ error: "No se pudo descargar la imagen" }, { status: 400 })
 
-    const buffer = Buffer.from(await fetched.arrayBuffer())
-    const mimeType = (fetched.headers.get("content-type") ?? "image/jpeg").split(";")[0]
-    // Filename extension must match actual MIME type — OpenAI validates both
-    const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg"
-    const file = await toFile(buffer, `image.${ext}`, { type: mimeType })
+    const rawBuffer = Buffer.from(await fetched.arrayBuffer())
+    // Convert to JPEG to guarantee RGB mode (no alpha channel) — gpt-image-1 rejects RGBA/WebP with alpha
+    const buffer = await sharp(rawBuffer).flatten({ background: "#ffffff" }).jpeg({ quality: 92 }).toBuffer()
+    const file = await toFile(buffer, "image.jpg", { type: "image/jpeg" })
 
     const response = await openai.images.edit({
       model: "gpt-image-1",
