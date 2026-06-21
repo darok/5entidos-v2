@@ -579,19 +579,21 @@ interface CleanupResult {
   total: number
   referenced: number
   orphaned: string[]
-  sql: string | null
 }
 
 function OtrosTab() {
   const [loading, setLoading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [result, setResult] = useState<CleanupResult | null>(null)
+  const [deleted, setDeleted] = useState<string[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   async function handleCheck() {
     setLoading(true)
     setError(null)
     setResult(null)
+    setDeleted(null)
     try {
       const res = await fetch("/api/admin/cleanup-images")
       const data = await res.json()
@@ -604,11 +606,21 @@ function OtrosTab() {
     }
   }
 
-  async function handleCopy() {
-    if (!result?.sql) return
-    await navigator.clipboard.writeText(result.sql)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  async function handleDelete() {
+    setConfirmOpen(false)
+    setDeleting(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/admin/cleanup-images", { method: "DELETE" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Error desconocido")
+      setDeleted(data.deleted ?? [])
+      setResult(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -617,19 +629,24 @@ function OtrosTab() {
         <h3 className="font-semibold">Limpieza de imágenes</h3>
         <p className="text-sm text-muted-foreground">
           Busca archivos en el bucket <code className="bg-muted px-1 rounded text-xs">recipe-images</code> que no están referenciados por ninguna receta.
-          El SQL generado se pega en el <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="underline">Editor SQL de Supabase</a>.
         </p>
         <Button
           type="button"
           variant="outline"
           size="sm"
           onClick={handleCheck}
-          disabled={loading}
+          disabled={loading || deleting}
         >
           {loading ? "Buscando…" : "Buscar imágenes huérfanas"}
         </Button>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
+
+        {deleted !== null && (
+          <p className="text-sm text-green-700">
+            {deleted.length === 0 ? "No se eliminó nada." : `${deleted.length} archivo${deleted.length !== 1 ? "s" : ""} eliminado${deleted.length !== 1 ? "s" : ""}.`}
+          </p>
+        )}
 
         {result && (
           <div className="space-y-3">
@@ -643,21 +660,38 @@ function OtrosTab() {
               <p className="text-sm text-muted-foreground">No hay archivos huérfanos.</p>
             ) : (
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">SQL para pegar en Supabase</p>
-                  <Button type="button" variant="ghost" size="sm" onClick={handleCopy}>
-                    {copied ? <Check className="h-3.5 w-3.5 mr-1 text-green-600" /> : null}
-                    {copied ? "Copiado" : "Copiar"}
-                  </Button>
-                </div>
-                <pre className="bg-muted rounded-md p-3 text-xs overflow-x-auto whitespace-pre-wrap break-all select-all">
-                  {result.sql}
-                </pre>
+                <ul className="text-xs text-muted-foreground bg-muted rounded-md p-3 space-y-0.5 max-h-40 overflow-y-auto">
+                  {result.orphaned.map((f) => <li key={f}>{f}</li>)}
+                </ul>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setConfirmOpen(true)}
+                  disabled={deleting}
+                >
+                  {deleting ? "Eliminando…" : `Eliminar ${result.orphaned.length} archivo${result.orphaned.length !== 1 ? "s" : ""}`}
+                </Button>
               </div>
             )}
           </div>
         )}
       </div>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Eliminar archivos huérfanos?</DialogTitle>
+            <DialogDescription>
+              Se eliminarán {result?.orphaned.length} archivos del bucket. Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleDelete}>Eliminar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

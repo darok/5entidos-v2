@@ -17,7 +17,7 @@ type Controls = {
   vajilla: "mantener" | "mejorar" | "cambiar"
   fondo: "conservar" | "mejorar" | "blanco" | "madera-clara" | "madera-campestre" | "restaurante" | "lino"
   correccion: "ninguna" | "automatica" | "profesional"
-  encuadre: "mantener" | "45" | "cenital" | "mejorar"
+  encuadre: "mantener" | "mejorar" | "clasico45" | "cenital"
   props: "ninguno" | "minimos" | "sutiles"
 }
 
@@ -30,7 +30,7 @@ const STYLES: Record<StyleKey, { label: string; description: string; defaults: C
   editorial: {
     label: "Editorial cálido",
     description: "superficie de madera o lino con textura sutil, luz cálida y lateral suave, sombras con profundidad, sensación de revista gastronómica, profundidad de campo corta con el fondo levemente desenfocado, props mínimos y coherentes apenas insinuados.",
-    defaults: { servir: "chef", vajilla: "cambiar", fondo: "madera-clara", correccion: "automatica", encuadre: "45", props: "minimos" },
+    defaults: { servir: "chef", vajilla: "cambiar", fondo: "madera-clara", correccion: "automatica", encuadre: "clasico45", props: "minimos" },
   },
   minimalista: {
     label: "Minimalista claro",
@@ -72,7 +72,7 @@ const CONTROL_OPTIONS: Record<keyof Controls, Record<string, { label: string; pr
   encuadre: {
     mantener: { label: "Mantener", prompt: "Mantené la composición y el encuadre exactamente como están en la foto original." },
     mejorar: { label: "Mejorar encuadre", prompt: "Respetá la composición original de la foto; enderezá, recortá y centrá para mejorarla sin cambiar el punto de vista." },
-    "45": { label: "Clásico 45°", prompt: "Recomponé la toma al ángulo clásico de fotografía de comida, a 45 grados sobre el plato." },
+    clasico45: { label: "Clásico 45°", prompt: "Recomponé la toma al ángulo clásico de fotografía de comida, a 45 grados sobre el plato." },
     cenital: { label: "Cenital", prompt: "Recomponé la toma a una vista cenital, desde arriba del plato." },
   },
   props: {

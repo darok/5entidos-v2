@@ -45,10 +45,7 @@ async function run(request: NextRequest, doDelete: boolean) {
   const orphaned = allFiles.filter((name) => !referenced.has(name))
 
   if (!doDelete) {
-    const sql = orphaned.length > 0
-      ? `DELETE FROM storage.objects\nWHERE bucket_id = 'recipe-images'\nAND name IN (\n  ${orphaned.map((n) => `'${n}'`).join(",\n  ")}\n);`
-      : null
-    return NextResponse.json({ total: allFiles.length, referenced: referenced.size, orphaned, sql })
+    return NextResponse.json({ total: allFiles.length, referenced: referenced.size, orphaned })
   }
 
   // Delete orphaned files in batches of 100
