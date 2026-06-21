@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import OpenAI from "openai"
+import OpenAI, { toFile } from "openai"
 
 // gpt-image-1 can take 20-30s — requires Vercel Pro for full timeout; Hobby plan may cut at 10s
 export const maxDuration = 60
@@ -23,7 +23,9 @@ export async function POST(request: NextRequest) {
 
     const buffer = Buffer.from(await fetched.arrayBuffer())
     const mimeType = (fetched.headers.get("content-type") ?? "image/jpeg").split(";")[0]
-    const file = new File([buffer], "image.jpg", { type: mimeType })
+    // Filename extension must match actual MIME type — OpenAI validates both
+    const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg"
+    const file = await toFile(buffer, `image.${ext}`, { type: mimeType })
 
     const response = await openai.images.edit({
       model: "gpt-image-1",

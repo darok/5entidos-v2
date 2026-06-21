@@ -16,8 +16,8 @@ type Controls = {
   servir: "mantener" | "prolijo" | "chef"
   vajilla: "mantener" | "mejorar" | "cambiar"
   fondo: "conservar" | "mejorar" | "blanco" | "madera-clara" | "madera-campestre" | "restaurante" | "lino"
-  correccion: "conservar" | "automatica" | "profesional"
-  encuadre: "mejorar" | "45" | "cenital"
+  correccion: "ninguna" | "automatica" | "profesional"
+  encuadre: "mantener" | "45" | "cenital" | "mejorar"
   props: "ninguno" | "minimos" | "sutiles"
 }
 
@@ -40,7 +40,7 @@ const STYLES: Record<StyleKey, { label: string; description: string; defaults: C
   rustico: {
     label: "Rústico",
     description: "superficie de madera oscura o piedra texturada, luz lateral cálida y algo dramática, sombras marcadas, paleta terrosa, sensación hogareña y artesanal, props rústicos mínimos (madera, lino crudo).",
-    defaults: { servir: "chef", vajilla: "mejorar", fondo: "madera-campestre", correccion: "automatica", encuadre: "mejorar", props: "minimos" },
+    defaults: { servir: "chef", vajilla: "mejorar", fondo: "madera-campestre", correccion: "automatica", encuadre: "mantener", props: "minimos" },
   },
 }
 
@@ -65,14 +65,15 @@ const CONTROL_OPTIONS: Record<keyof Controls, Record<string, { label: string; pr
     lino: { label: "Lino / tela", prompt: "Superficie con mantel de lino o tela neutra." },
   },
   correccion: {
-    conservar: { label: "Conservar", prompt: "Respetá la iluminación y el color de la foto original." },
+    ninguna: { label: "Ninguna", prompt: "Respetá la iluminación y el color de la foto original sin corregir nada." },
     automatica: { label: "Automática", prompt: "Corregí la calidad fotográfica suavemente: foco y nitidez, exposición, balance de blancos, contraste, sombras e iluminación general, como en una foto retocada por un fotógrafo." },
     profesional: { label: "Profesional", prompt: "Regenerá la calidad fotográfica integralmente: foco y nitidez, exposición, balance de blancos, contraste, sombras e iluminación general, como en una foto profesional." },
   },
   encuadre: {
-    mejorar: { label: "Mejorar encuadre", prompt: "Respetá la composición original de la foto; enderezá, recortá y centrá para mejorarla sin cambiar el punto de vista." },
+    mantener: { label: "Mantener", prompt: "Mantené la composición y el encuadre exactamente como están en la foto original." },
     "45": { label: "Clásico 45°", prompt: "Recomponé la toma al ángulo clásico de fotografía de comida, a 45 grados sobre el plato." },
     cenital: { label: "Cenital", prompt: "Recomponé la toma a una vista cenital, desde arriba del plato." },
+    mejorar: { label: "Mejorar encuadre", prompt: "Respetá la composición original de la foto; enderezá, recortá y centrá para mejorarla sin cambiar el punto de vista." },
   },
   props: {
     ninguno: { label: "Ninguno", prompt: "Sin props ni decoración adicional." },
@@ -258,9 +259,9 @@ export function AiImageBoostDialog({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
-        {/* Original photo — always visible */}
+        {/* Original photo — shown at 16:9 to match recipe card proportions */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={imageUrl} alt="Foto original" className="w-full h-44 object-cover rounded-md border" />
+        <img src={imageUrl} alt="Foto original" className="w-full aspect-video object-cover rounded-md border" />
 
         {/* ── IDLE ── */}
         {phase === "idle" && (
@@ -304,19 +305,12 @@ export function AiImageBoostDialog({
                 onChange={(v) => setControl("vajilla", v as Controls["vajilla"])}
               />
 
-              {/* Fondo has 7 options — dropdown */}
-              <div>
-                <Label className="mb-1.5 block text-sm">Fondo</Label>
-                <select
-                  value={controls.fondo}
-                  onChange={(e) => setControl("fondo", e.target.value as Controls["fondo"])}
-                  className="w-full text-sm border rounded px-3 py-2 bg-background"
-                >
-                  {Object.entries(CONTROL_OPTIONS.fondo).map(([k, v]) => (
-                    <option key={k} value={k}>{v.label}</option>
-                  ))}
-                </select>
-              </div>
+              <ControlGroup
+                label="Fondo"
+                options={CONTROL_OPTIONS.fondo}
+                value={controls.fondo}
+                onChange={(v) => setControl("fondo", v as Controls["fondo"])}
+              />
 
               <ControlGroup
                 label="Corrección fotográfica"
@@ -400,12 +394,12 @@ export function AiImageBoostDialog({
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Original</p>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={imageUrl} alt="Original" className="w-full h-48 object-cover rounded-md border" />
+                <img src={imageUrl} alt="Original" className="w-full aspect-video object-cover rounded-md border" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Resultado</p>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={resultDataUrl} alt="Resultado" className="w-full h-48 object-cover rounded-md border" />
+                <img src={resultDataUrl} alt="Resultado" className="w-full aspect-video object-cover rounded-md border" />
               </div>
             </div>
 
