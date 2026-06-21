@@ -428,7 +428,12 @@ export function RecipeForm({
           />
         </div>
 
-        <ImageUpload value={form.image_url} onChange={(url) => setField("image_url", url)} searchHint={form.title} />
+        <ImageUpload
+          value={form.image_url}
+          onChange={(url) => setField("image_url", url)}
+          searchHint={form.title}
+          recipeIngredients={form.ingredients.map((i) => i.ingredient_name).filter(Boolean)}
+        />
 
         {/* Time + servings */}
         <div className="grid grid-cols-2 gap-4">

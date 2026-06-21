@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Upload, Search, RefreshCw } from "lucide-react"
+import { Upload, Search, RefreshCw, Sparkles } from "lucide-react"
+import { AiImageBoostDialog } from "@/components/ai-image-boost-dialog"
 
 interface UnsplashResult {
   id: string
@@ -22,6 +23,7 @@ interface ImageUploadProps {
   value: string | null
   onChange: (url: string | null) => void
   searchHint?: string
+  recipeIngredients?: string[]
 }
 
 // Extract the visible cropped area from an image URL into a Blob
@@ -46,9 +48,10 @@ async function getCroppedBlob(src: string, pixels: Area): Promise<Blob> {
 }
 
 // Lets the user upload a file, search Unsplash, or enter a URL — then crop/zoom the result
-export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
+export function ImageUpload({ value, onChange, searchHint, recipeIngredients }: ImageUploadProps) {
   // ── source tabs ───────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState("upload")
+  const [boostOpen, setBoostOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [urlInput, setUrlInput] = useState("")
   const [urlLoading, setUrlLoading] = useState(false)
@@ -100,6 +103,8 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
       const blob = await getCroppedBlob(cropSrc, croppedAreaPixels)
       const formData = new FormData()
       formData.append("file", blob, "crop.jpg")
+      // Delete the pre-crop Supabase file (either the recipe's current image or the just-uploaded one)
+      if (cropPendingUrl) formData.append("replaces", cropPendingUrl)
       const res = await fetch("/api/upload", { method: "POST", body: formData })
       const data = await res.json()
       if (data.url) {
@@ -125,6 +130,8 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
     setUploading(true)
     const formData = new FormData()
     formData.append("file", file)
+    // Delete the existing recipe image when replacing with a new upload
+    if (value) formData.append("replaces", value)
     try {
       const res = await fetch("/api/upload", { method: "POST", body: formData })
       const data = await res.json()
@@ -145,7 +152,7 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: urlInput.trim() }),
+        body: JSON.stringify({ url: urlInput.trim(), ...(value ? { replaces: value } : {}) }),
       })
       const data = await res.json()
       if (data.url) {
@@ -189,7 +196,7 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: photo.urls.regular }),
+        body: JSON.stringify({ url: photo.urls.regular, ...(value ? { replaces: value } : {}) }),
       })
       const data = await res.json()
       if (data.url) {
@@ -356,29 +363,48 @@ export function ImageUpload({ value, onChange, searchHint }: ImageUploadProps) {
         </TabsContent>
       </Tabs>
 
-      {/* Preview with crop button */}
+      {/* Preview with action buttons */}
       {value && (
-        <div className="relative aspect-video w-full overflow-hidden rounded-md border bg-muted">
-          <Image src={value} alt="Preview" fill className="object-cover" />
-          <div className="absolute top-2 right-2 flex gap-1.5">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => handleImageReady(value)}
-            >
-              Recortar
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={() => onChange(null)}
-            >
-              Quitar
-            </Button>
+        <>
+          <div className="relative aspect-video w-full overflow-hidden rounded-md border bg-muted">
+            <Image src={value} alt="Preview" fill className="object-cover" />
+            <div className="absolute top-2 right-2 flex gap-1.5">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => handleImageReady(value)}
+              >
+                Recortar
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setBoostOpen(true)}
+              >
+                <Sparkles className="h-3.5 w-3.5 mr-1" /> Boost con IA
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => onChange(null)}
+              >
+                Quitar
+              </Button>
+            </div>
           </div>
-        </div>
+
+          <AiImageBoostDialog
+            open={boostOpen}
+            onClose={() => setBoostOpen(false)}
+            imageUrl={value}
+            recipeTitle={searchHint}
+            recipeIngredients={recipeIngredients}
+            onSuccess={(newUrl) => onChange(newUrl)}
+          />
+        </>
       )}
     </div>
   )
