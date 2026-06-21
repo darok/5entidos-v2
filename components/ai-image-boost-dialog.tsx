@@ -47,7 +47,7 @@ const STYLES: Record<StyleKey, { label: string; description: string; defaults: C
 const CONTROL_OPTIONS: Record<keyof Controls, Record<string, { label: string; prompt: string }>> = {
   servir: {
     mantener: { label: "Mantener", prompt: "Conservá el emplatado actual; solo acomodá y limpiá lo mínimo." },
-    prolijo: { label: "Servir prolijo", prompt: "Serví el plato de forma prolija y apetecible en una vajilla adecuada." },
+    prolijo: { label: "Emprolijar", prompt: "Serví el plato de forma prolija y apetecible en una vajilla adecuada." },
     chef: { label: "Emplatado de chef", prompt: "Reinterpretá la presentación como un chef profesional: emplatado cuidado, porciones bien dispuestas, terminaciones prolijas, con los mismos ingredientes." },
   },
   vajilla: {
@@ -56,7 +56,7 @@ const CONTROL_OPTIONS: Record<keyof Controls, Record<string, { label: string; pr
     cambiar: { label: "Cambiar", prompt: "Cambiá la vajilla por una de presentación adecuada al plato y al estilo." },
   },
   fondo: {
-    conservar: { label: "Conservar", prompt: "Conservá el fondo actual." },
+    conservar: { label: "Mantener", prompt: "Conservá el fondo actual." },
     mejorar: { label: "Mejorar", prompt: "Conservá la idea del fondo actual pero mejoralo." },
     blanco: { label: "Blanco neutro", prompt: "Fondo blanco o neutro, limpio y uniforme." },
     "madera-clara": { label: "Madera clara", prompt: "Superficie de mesa de madera clara." },
@@ -71,9 +71,9 @@ const CONTROL_OPTIONS: Record<keyof Controls, Record<string, { label: string; pr
   },
   encuadre: {
     mantener: { label: "Mantener", prompt: "Mantené la composición y el encuadre exactamente como están en la foto original." },
+    mejorar: { label: "Mejorar encuadre", prompt: "Respetá la composición original de la foto; enderezá, recortá y centrá para mejorarla sin cambiar el punto de vista." },
     "45": { label: "Clásico 45°", prompt: "Recomponé la toma al ángulo clásico de fotografía de comida, a 45 grados sobre el plato." },
     cenital: { label: "Cenital", prompt: "Recomponé la toma a una vista cenital, desde arriba del plato." },
-    mejorar: { label: "Mejorar encuadre", prompt: "Respetá la composición original de la foto; enderezá, recortá y centrá para mejorarla sin cambiar el punto de vista." },
   },
   props: {
     ninguno: { label: "Ninguno", prompt: "Sin props ni decoración adicional." },
@@ -368,7 +368,7 @@ export function AiImageBoostDialog({
             </div>
 
             <div className="flex items-center justify-between gap-3 pt-2 border-t">
-              <p className="text-xs text-muted-foreground">~$0.04 por imagen</p>
+              <p className="text-xs text-muted-foreground">~$0.15 por imagen</p>
               <div className="flex gap-2">
                 <Button type="button" variant="outline" onClick={handleVerPrompt}>
                   Ver prompt
