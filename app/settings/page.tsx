@@ -581,50 +581,170 @@ interface CleanupResult {
   orphaned: string[]
 }
 
-function OtrosTab() {
-  const [loading, setLoading] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [result, setResult] = useState<CleanupResult | null>(null)
-  const [deleted, setDeleted] = useState<string[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [confirmOpen, setConfirmOpen] = useState(false)
+interface RenameItem {
+  recipe_id: string
+  title: string
+  old_path: string
+  new_path: string
+}
 
-  async function handleCheck() {
-    setLoading(true)
-    setError(null)
-    setResult(null)
-    setDeleted(null)
+function OtrosTab() {
+  // cleanup state
+  const [cleanLoading, setCleanLoading] = useState(false)
+  const [cleanDeleting, setCleanDeleting] = useState(false)
+  const [cleanResult, setCleanResult] = useState<CleanupResult | null>(null)
+  const [cleanDeleted, setCleanDeleted] = useState<string[] | null>(null)
+  const [cleanError, setCleanError] = useState<string | null>(null)
+  const [cleanConfirm, setCleanConfirm] = useState(false)
+
+  // rename state
+  const [renameLoading, setRenameLoading] = useState(false)
+  const [renameRunning, setRenameRunning] = useState(false)
+  const [renameItems, setRenameItems] = useState<RenameItem[] | null>(null)
+  const [renameResult, setRenameResult] = useState<{ renamed: string[]; errors: string[] } | null>(null)
+  const [renameError, setRenameError] = useState<string | null>(null)
+  const [renameConfirm, setRenameConfirm] = useState(false)
+
+  async function handleCleanCheck() {
+    setCleanLoading(true)
+    setCleanError(null)
+    setCleanResult(null)
+    setCleanDeleted(null)
     try {
       const res = await fetch("/api/admin/cleanup-images")
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Error desconocido")
-      setResult(data)
+      setCleanResult(data)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setCleanError(e instanceof Error ? e.message : String(e))
     } finally {
-      setLoading(false)
+      setCleanLoading(false)
     }
   }
 
-  async function handleDelete() {
-    setConfirmOpen(false)
-    setDeleting(true)
-    setError(null)
+  async function handleCleanDelete() {
+    setCleanConfirm(false)
+    setCleanDeleting(true)
+    setCleanError(null)
     try {
       const res = await fetch("/api/admin/cleanup-images", { method: "DELETE" })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Error desconocido")
-      setDeleted(data.deleted ?? [])
-      setResult(null)
+      setCleanDeleted(data.deleted ?? [])
+      setCleanResult(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setCleanError(e instanceof Error ? e.message : String(e))
     } finally {
-      setDeleting(false)
+      setCleanDeleting(false)
+    }
+  }
+
+  async function handleRenamePreview() {
+    setRenameLoading(true)
+    setRenameError(null)
+    setRenameItems(null)
+    setRenameResult(null)
+    try {
+      const res = await fetch("/api/admin/rename-images")
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Error desconocido")
+      setRenameItems(data.items)
+    } catch (e) {
+      setRenameError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setRenameLoading(false)
+    }
+  }
+
+  async function handleRenameRun() {
+    if (!renameItems) return
+    setRenameConfirm(false)
+    setRenameRunning(true)
+    setRenameError(null)
+    try {
+      const res = await fetch("/api/admin/rename-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: renameItems }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Error desconocido")
+      setRenameResult(data)
+      setRenameItems(null)
+    } catch (e) {
+      setRenameError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setRenameRunning(false)
     }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+
+      {/* ── Renombrar imágenes ── */}
+      <div className="space-y-3">
+        <h3 className="font-semibold">Renombrar imágenes</h3>
+        <p className="text-sm text-muted-foreground">
+          Aplica el formato <code className="bg-muted px-1 rounded text-xs">nombre_receta_XXXXXX.ext</code> a todas las imágenes existentes en el bucket.
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleRenamePreview}
+          disabled={renameLoading || renameRunning}
+        >
+          {renameLoading ? "Buscando…" : "Ver qué se renombraría"}
+        </Button>
+
+        {renameError && <p className="text-sm text-destructive">{renameError}</p>}
+
+        {renameResult && (
+          <div className="space-y-1">
+            <p className="text-sm text-green-700">
+              {renameResult.renamed.length} imagen{renameResult.renamed.length !== 1 ? "es" : ""} renombrada{renameResult.renamed.length !== 1 ? "s" : ""}.
+            </p>
+            {renameResult.errors.length > 0 && (
+              <ul className="text-xs text-destructive space-y-0.5">
+                {renameResult.errors.map((e, i) => <li key={i}>{e}</li>)}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {renameItems !== null && (
+          <div className="space-y-2">
+            {renameItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Todas las imágenes ya tienen el formato correcto.</p>
+            ) : (
+              <>
+                <ul className="text-xs bg-muted rounded-md p-3 space-y-1 max-h-48 overflow-y-auto">
+                  {renameItems.map((item) => (
+                    <li key={item.recipe_id} className="grid grid-cols-[1fr_auto_1fr] gap-1 items-start">
+                      <span className="text-muted-foreground truncate">{item.old_path}</span>
+                      <span className="text-muted-foreground px-1">→</span>
+                      <span className="truncate">{item.new_path}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRenameConfirm(true)}
+                  disabled={renameRunning}
+                >
+                  {renameRunning ? "Renombrando…" : `Renombrar ${renameItems.length} imagen${renameItems.length !== 1 ? "es" : ""}`}
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t" />
+
+      {/* ── Limpieza de imágenes huérfanas ── */}
       <div className="space-y-3">
         <h3 className="font-semibold">Limpieza de imágenes</h3>
         <p className="text-sm text-muted-foreground">
@@ -634,43 +754,42 @@ function OtrosTab() {
           type="button"
           variant="outline"
           size="sm"
-          onClick={handleCheck}
-          disabled={loading || deleting}
+          onClick={handleCleanCheck}
+          disabled={cleanLoading || cleanDeleting}
         >
-          {loading ? "Buscando…" : "Buscar imágenes huérfanas"}
+          {cleanLoading ? "Buscando…" : "Buscar imágenes huérfanas"}
         </Button>
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {cleanError && <p className="text-sm text-destructive">{cleanError}</p>}
 
-        {deleted !== null && (
+        {cleanDeleted !== null && (
           <p className="text-sm text-green-700">
-            {deleted.length === 0 ? "No se eliminó nada." : `${deleted.length} archivo${deleted.length !== 1 ? "s" : ""} eliminado${deleted.length !== 1 ? "s" : ""}.`}
+            {cleanDeleted.length === 0 ? "No se eliminó nada." : `${cleanDeleted.length} archivo${cleanDeleted.length !== 1 ? "s" : ""} eliminado${cleanDeleted.length !== 1 ? "s" : ""}.`}
           </p>
         )}
 
-        {result && (
+        {cleanResult && (
           <div className="space-y-3">
             <p className="text-sm">
-              <span className="font-medium">{result.total}</span> archivos en bucket ·{" "}
-              <span className="font-medium">{result.referenced}</span> referenciados ·{" "}
-              <span className="font-medium">{result.orphaned.length}</span> huérfanos
+              <span className="font-medium">{cleanResult.total}</span> archivos en bucket ·{" "}
+              <span className="font-medium">{cleanResult.referenced}</span> referenciados ·{" "}
+              <span className="font-medium">{cleanResult.orphaned.length}</span> huérfanos
             </p>
-
-            {result.orphaned.length === 0 ? (
+            {cleanResult.orphaned.length === 0 ? (
               <p className="text-sm text-muted-foreground">No hay archivos huérfanos.</p>
             ) : (
               <div className="space-y-2">
                 <ul className="text-xs text-muted-foreground bg-muted rounded-md p-3 space-y-0.5 max-h-40 overflow-y-auto">
-                  {result.orphaned.map((f) => <li key={f}>{f}</li>)}
+                  {cleanResult.orphaned.map((f) => <li key={f}>{f}</li>)}
                 </ul>
                 <Button
                   type="button"
                   variant="destructive"
                   size="sm"
-                  onClick={() => setConfirmOpen(true)}
-                  disabled={deleting}
+                  onClick={() => setCleanConfirm(true)}
+                  disabled={cleanDeleting}
                 >
-                  {deleting ? "Eliminando…" : `Eliminar ${result.orphaned.length} archivo${result.orphaned.length !== 1 ? "s" : ""}`}
+                  {cleanDeleting ? "Eliminando…" : `Eliminar ${cleanResult.orphaned.length} archivo${cleanResult.orphaned.length !== 1 ? "s" : ""}`}
                 </Button>
               </div>
             )}
@@ -678,17 +797,34 @@ function OtrosTab() {
         )}
       </div>
 
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      {/* Rename confirm dialog */}
+      <Dialog open={renameConfirm} onOpenChange={setRenameConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Renombrar imágenes?</DialogTitle>
+            <DialogDescription>
+              Se renombrarán {renameItems?.length} imagen{renameItems?.length !== 1 ? "es" : ""} y se actualizarán las recetas correspondientes. Las URLs viejas dejarán de funcionar.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameConfirm(false)}>Cancelar</Button>
+            <Button onClick={handleRenameRun}>Renombrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cleanup confirm dialog */}
+      <Dialog open={cleanConfirm} onOpenChange={setCleanConfirm}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>¿Eliminar archivos huérfanos?</DialogTitle>
             <DialogDescription>
-              Se eliminarán {result?.orphaned.length} archivos del bucket. Esta acción no se puede deshacer.
+              Se eliminarán {cleanResult?.orphaned.length} archivos del bucket. Esta acción no se puede deshacer.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmOpen(false)}>Cancelar</Button>
-            <Button variant="destructive" onClick={handleDelete}>Eliminar</Button>
+            <Button variant="outline" onClick={() => setCleanConfirm(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleCleanDelete}>Eliminar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
