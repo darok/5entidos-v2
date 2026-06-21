@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       size: "1536x1024" as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      quality: "high" as any,
+      quality: "medium" as any,
     })
 
     const b64 = response.data?.[0]?.b64_json

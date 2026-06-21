@@ -111,7 +111,7 @@ function assemblePrompt(
 
   if (nota.trim()) parts.push(`Indicación específica: ${nota.trim()}`)
 
-  parts.push("Evitá: texto o marcas de agua; ingredientes o comida que no estén en la foto original; props irreales o fuera de contexto; exceso de adornos; aspecto artificial o de render 3D.")
+  parts.push("La imagen final debe verse como una fotografía real tomada con cámara: texturas naturales, imperfecciones normales de comida real, iluminación fotográfica creíble. No debe verse como render 3D, imagen generada por IA, foto de stock sobreproducida ni publicidad perfecta. Evitá: saturación exagerada, nitidez artificial, reflejos irreales, simetría perfecta que no existe en la foto original, texto o marcas de agua, ingredientes que no están en la foto original, props fuera de contexto, y cualquier cosa que delate generación o procesamiento digital excesivo.")
 
   return parts.join(" ")
 }
@@ -368,7 +368,7 @@ export function AiImageBoostDialog({
             </div>
 
             <div className="flex items-center justify-between gap-3 pt-2 border-t">
-              <p className="text-xs text-muted-foreground">~$0.15 por imagen</p>
+              <p className="text-xs text-muted-foreground">~$0.06 por imagen</p>
               <div className="flex gap-2">
                 <Button type="button" variant="outline" onClick={handleVerPrompt}>
                   Ver prompt
