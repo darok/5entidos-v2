@@ -14,17 +14,22 @@ export async function POST(request: NextRequest) {
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
   try {
-    const { imageUrl, prompt } = await request.json()
-    if (!imageUrl?.trim() || !prompt?.trim()) {
-      return NextResponse.json({ error: "imageUrl and prompt are required" }, { status: 400 })
+    const { imageUrl, imageBase64, prompt } = await request.json()
+    if (!prompt?.trim()) return NextResponse.json({ error: "prompt is required" }, { status: 400 })
+    if (!imageUrl?.trim() && !imageBase64) return NextResponse.json({ error: "imageUrl or imageBase64 required" }, { status: 400 })
+
+    let rawBuffer: Buffer
+    if (imageBase64) {
+      // Refinement iteration: client sends previous result as base64 to chain generations
+      rawBuffer = Buffer.from(imageBase64, "base64")
+    } else {
+      const fetched = await fetch(imageUrl)
+      if (!fetched.ok) return NextResponse.json({ error: "No se pudo descargar la imagen" }, { status: 400 })
+      rawBuffer = Buffer.from(await fetched.arrayBuffer())
     }
 
-    const fetched = await fetch(imageUrl)
-    if (!fetched.ok) return NextResponse.json({ error: "No se pudo descargar la imagen" }, { status: 400 })
-
-    const rawBuffer = Buffer.from(await fetched.arrayBuffer())
-    // Convert to JPEG to guarantee RGB mode (no alpha channel) — gpt-image-1 rejects RGBA/WebP with alpha
-    const buffer = await sharp(rawBuffer).flatten({ background: "#ffffff" }).jpeg({ quality: 92 }).toBuffer()
+    // Convert to JPEG (RGB) — gpt-image-1 rejects RGBA/WebP with alpha channel
+    const buffer = await sharp(rawBuffer).flatten({ background: "#ffffff" }).jpeg({ quality: 95 }).toBuffer()
     const file = await toFile(buffer, "image.jpg", { type: "image/jpeg" })
 
     const response = await openai.images.edit({
@@ -32,7 +37,10 @@ export async function POST(request: NextRequest) {
       image: file,
       prompt,
       n: 1,
-      size: "1024x1024",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      size: "1536x1024" as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      quality: "high" as any,
     })
 
     const b64 = response.data?.[0]?.b64_json

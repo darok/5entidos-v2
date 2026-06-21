@@ -173,6 +173,9 @@ export function AiImageBoostDialog({
   const [nota, setNota] = useState("")
   const [editedPrompt, setEditedPrompt] = useState<string | null>(null)
   const [resultB64, setResultB64] = useState<string | null>(null)
+  // Tracks which image to use as input for the next generation (null = original imageUrl)
+  const [currentInputBase, setCurrentInputBase] = useState<string | null>(null)
+  const [refineNote, setRefineNote] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -190,18 +193,27 @@ export function AiImageBoostDialog({
     [editedPrompt, style, controls, nota, recipeTitle, recipeIngredients],
   )
 
-  async function generate(prompt: string) {
+  // inputBase: null = use original imageUrl; data URL = use previous result for chained refinement
+  async function generate(prompt: string, inputBase: string | null = null) {
     setPhase("generating")
     setError(null)
     try {
+      const body: Record<string, string> = { prompt }
+      const src = inputBase ?? imageUrl
+      if (src.startsWith("data:")) {
+        body.imageBase64 = src.split(",")[1]
+      } else {
+        body.imageUrl = src
+      }
       const res = await fetch("/api/ai/boost-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl, prompt }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Error al generar")
       setResultB64(data.b64)
+      setCurrentInputBase(`data:image/png;base64,${data.b64}`)
       setPhase("result")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido")
@@ -212,6 +224,16 @@ export function AiImageBoostDialog({
   function handleVerPrompt() {
     setEditedPrompt(assemblePrompt(style, controls, nota, recipeTitle, recipeIngredients))
     setPhase("prompt-preview")
+  }
+
+  function handleRegenerar() {
+    let finalPrompt = editedPrompt ?? assemblePrompt(style, controls, nota, recipeTitle, recipeIngredients)
+    if (refineNote.trim()) {
+      finalPrompt = `${finalPrompt} ${refineNote.trim()}`
+      setEditedPrompt(finalPrompt)
+      setRefineNote("")
+    }
+    generate(finalPrompt, currentInputBase)
   }
 
   async function handleGuardar() {
@@ -244,6 +266,8 @@ export function AiImageBoostDialog({
     setResultB64(null)
     setEditedPrompt(null)
     setError(null)
+    setRefineNote("")
+    setCurrentInputBase(null)
     onClose()
   }
 
@@ -390,16 +414,28 @@ export function AiImageBoostDialog({
         {/* ── RESULT ── */}
         {phase === "result" && resultDataUrl && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+            {/* New image at full recipe proportions */}
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Resultado</p>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={resultDataUrl} alt="Resultado" className="w-full aspect-video object-cover rounded-md border" />
+            </div>
+
+            {/* Original thumbnail + refine note */}
+            <div className="grid grid-cols-3 gap-3 items-start">
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Original</p>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={imageUrl} alt="Original" className="w-full aspect-video object-cover rounded-md border" />
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Resultado</p>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={resultDataUrl} alt="Resultado" className="w-full aspect-video object-cover rounded-md border" />
+              <div className="col-span-2">
+                <Label className="mb-1.5 block text-sm">Nota para regenerar (opcional)</Label>
+                <Textarea
+                  value={refineNote}
+                  onChange={(e) => setRefineNote(e.target.value)}
+                  placeholder="ej: más luz, sacá el tenedor, fondo más oscuro"
+                  className="resize-none h-[4.5rem]"
+                />
               </div>
             </div>
 
@@ -412,7 +448,7 @@ export function AiImageBoostDialog({
               <Button type="button" variant="outline" onClick={handleAjustar}>
                 Ajustar
               </Button>
-              <Button type="button" variant="outline" onClick={() => generate(currentPrompt())}>
+              <Button type="button" variant="outline" onClick={handleRegenerar}>
                 Regenerar
               </Button>
               <Button type="button" onClick={handleGuardar} disabled={saving}>
