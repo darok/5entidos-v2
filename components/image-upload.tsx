@@ -368,32 +368,32 @@ export function ImageUpload({ value, onChange, searchHint, recipeIngredients }: 
         <>
           <div className="relative aspect-video w-full overflow-hidden rounded-md border bg-muted">
             <Image src={value} alt="Preview" fill className="object-cover" />
-            <div className="absolute top-2 right-2 flex gap-1.5">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => handleImageReady(value)}
-              >
-                Recortar
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setBoostOpen(true)}
-              >
-                <Sparkles className="h-3.5 w-3.5 mr-1" /> Boost con IA
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                onClick={() => onChange(null)}
-              >
-                Quitar
-              </Button>
-            </div>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => handleImageReady(value)}
+            >
+              Recortar
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setBoostOpen(true)}
+            >
+              <Sparkles className="h-3.5 w-3.5 mr-1" /> Boost con IA
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={() => onChange(null)}
+            >
+              Quitar
+            </Button>
           </div>
 
           <AiImageBoostDialog
