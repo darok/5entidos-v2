@@ -103,6 +103,7 @@ export function ImageUpload({ value, onChange, searchHint, recipeIngredients }: 
       const blob = await getCroppedBlob(cropSrc, croppedAreaPixels)
       const formData = new FormData()
       formData.append("file", blob, "crop.jpg")
+      if (searchHint) formData.append("name", searchHint)
       // Delete the pre-crop Supabase file (either the recipe's current image or the just-uploaded one)
       if (cropPendingUrl) formData.append("replaces", cropPendingUrl)
       const res = await fetch("/api/upload", { method: "POST", body: formData })
@@ -130,6 +131,7 @@ export function ImageUpload({ value, onChange, searchHint, recipeIngredients }: 
     setUploading(true)
     const formData = new FormData()
     formData.append("file", file)
+    if (searchHint) formData.append("name", searchHint)
     // Delete the existing recipe image when replacing with a new upload
     if (value) formData.append("replaces", value)
     try {
@@ -152,7 +154,7 @@ export function ImageUpload({ value, onChange, searchHint, recipeIngredients }: 
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: urlInput.trim(), ...(value ? { replaces: value } : {}) }),
+        body: JSON.stringify({ url: urlInput.trim(), ...(searchHint ? { name: searchHint } : {}), ...(value ? { replaces: value } : {}) }),
       })
       const data = await res.json()
       if (data.url) {
@@ -196,7 +198,7 @@ export function ImageUpload({ value, onChange, searchHint, recipeIngredients }: 
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: photo.urls.regular, ...(value ? { replaces: value } : {}) }),
+        body: JSON.stringify({ url: photo.urls.regular, ...(searchHint ? { name: searchHint } : {}), ...(value ? { replaces: value } : {}) }),
       })
       const data = await res.json()
       if (data.url) {

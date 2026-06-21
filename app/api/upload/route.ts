@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
+// Converts a recipe title to a safe filename base: "Risotto de Hongos" → "risotto_de_hongos"
+function slugify(title: string): string {
+  return title
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 60) || "receta"
+}
+
+function buildFilename(ext: string, nameHint?: string | null): string {
+  const rand = Math.floor(Math.random() * 900000 + 100000)
+  const base = nameHint?.trim() ? slugify(nameHint.trim()) : `img_${Date.now()}`
+  return `${base}_${rand}.${ext}`
+}
+
 // Deletes an old Storage file given its public URL — runs after successful upload only
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function deleteOldFile(supabase: any, publicUrl: string): Promise<void> {
@@ -24,10 +41,11 @@ export async function POST(request: NextRequest) {
       const formData = await request.formData()
       const file = formData.get("file") as File | null
       const replaces = formData.get("replaces") as string | null
+      const nameHint = formData.get("name") as string | null
       if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 })
 
       const ext = file.name.split(".").pop() ?? "jpg"
-      const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const filename = buildFilename(ext, nameHint)
 
       const { error } = await supabase.storage
         .from("recipe-images")
@@ -39,8 +57,8 @@ export async function POST(request: NextRequest) {
       if (replaces?.trim()) await deleteOldFile(supabase, replaces)
       return NextResponse.json({ url: publicUrl })
     } else {
-      // JSON { url, replaces? } — fetch image server-side and re-upload to Storage
-      const { url, replaces } = await request.json()
+      // JSON { url, replaces?, name? } — fetch image server-side and re-upload to Storage
+      const { url, replaces, name: nameHint } = await request.json()
       if (!url?.trim()) return NextResponse.json({ error: "URL required" }, { status: 400 })
 
       const fetched = await fetch(url)
@@ -48,7 +66,7 @@ export async function POST(request: NextRequest) {
 
       const mimeType = (fetched.headers.get("content-type") ?? "image/jpeg").split(";")[0]
       const ext = mimeType.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg"
-      const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const filename = buildFilename(ext, nameHint)
       const buffer = await fetched.arrayBuffer()
 
       const { error: uploadError } = await supabase.storage
