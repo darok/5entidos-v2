@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ b64 })
   } catch (error) {
     console.error("boost-image error:", error)
-    return NextResponse.json({ error: "Image boost failed" }, { status: 500 })
+    const message = error instanceof Error ? error.message : String(error)
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
