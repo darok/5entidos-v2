@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import Image from "next/image"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -251,18 +250,17 @@ export function AiImageBoostDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl flex flex-col gap-0 p-0 max-h-[90vh]">
+        <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4 border-b">
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5" /> Boost con IA
           </DialogTitle>
         </DialogHeader>
 
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
         {/* Original photo — always visible */}
-        <div className="relative aspect-video w-full overflow-hidden rounded-md border bg-muted">
-          <Image src={imageUrl} alt="Foto original" fill className="object-cover" unoptimized />
-          <span className="absolute bottom-2 left-2 text-xs bg-black/60 text-white rounded px-2 py-0.5">Original</span>
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={imageUrl} alt="Foto original" className="w-full h-44 object-cover rounded-md border" />
 
         {/* ── IDLE ── */}
         {phase === "idle" && (
@@ -401,15 +399,13 @@ export function AiImageBoostDialog({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Original</p>
-                <div className="relative aspect-square overflow-hidden rounded-md border bg-muted">
-                  <Image src={imageUrl} alt="Original" fill className="object-cover" unoptimized />
-                </div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={imageUrl} alt="Original" className="w-full h-48 object-cover rounded-md border" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Resultado</p>
-                <div className="relative aspect-square overflow-hidden rounded-md border bg-muted">
-                  <Image src={resultDataUrl} alt="Resultado" fill className="object-cover" unoptimized />
-                </div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={resultDataUrl} alt="Resultado" className="w-full h-48 object-cover rounded-md border" />
               </div>
             </div>
 
@@ -435,6 +431,7 @@ export function AiImageBoostDialog({
             </div>
           </div>
         )}
+        </div>{/* end scrollable body */}
       </DialogContent>
     </Dialog>
   )
