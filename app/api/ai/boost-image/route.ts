@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       size: "1024x1024",
     })
 
-    const b64 = response.data[0]?.b64_json
+    const b64 = response.data?.[0]?.b64_json
     if (!b64) return NextResponse.json({ error: "No image returned" }, { status: 500 })
 
     return NextResponse.json({ b64 })
