@@ -41,7 +41,12 @@ function parseCaptionXml(xml: string): string {
     .trim()
 }
 
-// Primary: ytdl.getInfo() — returns metadata + caption track baseUrls in one call
+// Resolves after `ms` milliseconds with null — used to race against hanging fetches
+function timeout<T>(ms: number): Promise<T | null> {
+  return new Promise((resolve) => setTimeout(() => resolve(null), ms))
+}
+
+// ytdl.getInfo() — metadata + caption track URLs + audio formats in one call
 async function fetchViaYtdl(videoUrl: string): Promise<{
   title: string | null
   description: string | null
@@ -53,12 +58,10 @@ async function fetchViaYtdl(videoUrl: string): Promise<{
     const title = info.videoDetails.title || null
     const description = info.videoDetails.description || null
 
-    // Caption tracks are in the raw player_response
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tracks: any[] = (info.player_response as any)
       ?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? []
 
-    // Prefer manual ES, then auto ES, then any auto-generated, then first available
     const track =
       tracks.find((t) => t.languageCode === "es" && t.kind !== "asr") ??
       tracks.find((t) => t.languageCode === "es") ??
@@ -69,12 +72,8 @@ async function fetchViaYtdl(videoUrl: string): Promise<{
     if (track?.baseUrl) {
       try {
         const res = await fetch(track.baseUrl as string, { signal: AbortSignal.timeout(8000) })
-        if (res.ok) {
-          captionsText = parseCaptionXml(await res.text()) || null
-        }
-      } catch {
-        // captions fetch failed — continue without them
-      }
+        if (res.ok) captionsText = parseCaptionXml(await res.text()) || null
+      } catch { /* caption fetch failed */ }
     }
 
     return { title, description, captionsText, formats: info.formats }
@@ -83,7 +82,7 @@ async function fetchViaYtdl(videoUrl: string): Promise<{
   }
 }
 
-// Fallback title-only source: YouTube oEmbed (public API, no auth, datacenter-friendly)
+// oEmbed — reliable public API for title, no auth required
 async function fetchOEmbedTitle(videoUrl: string): Promise<string | null> {
   try {
     const res = await fetch(
@@ -92,13 +91,13 @@ async function fetchOEmbedTitle(videoUrl: string): Promise<string | null> {
     )
     if (!res.ok) return null
     const data = await res.json()
-    return data.title ?? null
+    return (data.title as string) ?? null
   } catch {
     return null
   }
 }
 
-// Fallback captions: youtube-transcript package
+// youtube-transcript package — fetches auto-generated or manual captions
 async function fetchCaptionsViaPackage(videoId: string): Promise<string | null> {
   try {
     let items
@@ -111,34 +110,6 @@ async function fetchCaptionsViaPackage(videoId: string): Promise<string | null> 
   } catch {
     return null
   }
-}
-
-// Audio fallback: use formats already obtained from ytdl.getInfo() to avoid a second info call
-async function downloadAudio(formats: ytdl.videoFormat[]): Promise<Buffer> {
-  const audioFormats = ytdl.filterFormats(formats, "audioonly")
-  if (!audioFormats.length) throw new Error("No audio formats available")
-
-  // Lowest bitrate = smallest download
-  audioFormats.sort((a, b) => (a.audioBitrate ?? 999) - (b.audioBitrate ?? 999))
-  const format = audioFormats[0]
-
-  const res = await fetch(format.url, { signal: AbortSignal.timeout(45_000) })
-  if (!res.ok) throw new Error(`Audio fetch failed: ${res.status}`)
-
-  const MAX_BYTES = 24 * 1024 * 1024
-  const reader = res.body!.getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    chunks.push(value)
-    total += value.length
-    if (total >= MAX_BYTES) break
-  }
-
-  return Buffer.concat(chunks)
 }
 
 export async function POST(request: NextRequest) {
@@ -157,44 +128,52 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "URL de YouTube inválida" }, { status: 400 })
     }
 
-    let title: string | null = null
-    let description: string | null = null
-    let captionsText: string | null = null
-    let ytdlFormats: ytdl.videoFormat[] = []
-    let source: "subtitles" | "audio" = "subtitles"
+    // Run all three sources in parallel with independent timeouts.
+    // ytdl.getInfo() can hang for 30-60s on datacenter IPs blocked by YouTube,
+    // so it races against a 12s cutoff. oEmbed and captions run concurrently.
+    const [ytdlData, oembedTitle, captionsFromPackage] = await Promise.all([
+      Promise.race([fetchViaYtdl(url), timeout<Awaited<ReturnType<typeof fetchViaYtdl>>>(12_000)]),
+      fetchOEmbedTitle(url),
+      fetchCaptionsViaPackage(videoId),
+    ])
 
-    // ── Primary: ytdl.getInfo() ───────────────────────────────────
-    const ytdlData = await fetchViaYtdl(url)
-    if (ytdlData) {
-      title = ytdlData.title
-      description = ytdlData.description
-      captionsText = ytdlData.captionsText
-      ytdlFormats = ytdlData.formats
-    }
+    let title: string | null = ytdlData?.title ?? oembedTitle
+    const description: string | null = ytdlData?.description ?? null
+    let captionsText: string | null = ytdlData?.captionsText ?? captionsFromPackage
+    const ytdlFormats: ytdl.videoFormat[] = ytdlData?.formats ?? []
+    let source: "subtitles" | "audio" = captionsText ? "subtitles" : "audio"
 
-    // ── Fallback: oEmbed for title if ytdl failed ─────────────────
-    if (!title) {
-      title = await fetchOEmbedTitle(url)
-    }
+    console.log(`[youtube-import] videoId=${videoId} title=${title} captions=${!!captionsText} ytdlOK=${!!ytdlData} oembedOK=${!!oembedTitle} pkgCaptions=${!!captionsFromPackage}`)
 
-    // ── Fallback: youtube-transcript for captions ─────────────────
-    if (!captionsText) {
-      captionsText = await fetchCaptionsViaPackage(videoId)
-    }
-
-    // ── Audio fallback when no captions at all ────────────────────
+    // Audio fallback — only when no captions found at all
     if (!captionsText) {
       source = "audio"
       try {
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-
-        // If ytdl.getInfo() succeeded, use those format URLs (no second auth round-trip)
-        // Otherwise fall back to a fresh ytdl stream
         let audioBuffer: Buffer
+
         if (ytdlFormats.length) {
-          audioBuffer = await downloadAudio(ytdlFormats)
+          // Reuse format URLs already obtained from getInfo (same auth context)
+          const audioFormats = ytdl.filterFormats(ytdlFormats, "audioonly")
+          if (!audioFormats.length) throw new Error("No audio formats")
+          audioFormats.sort((a, b) => (a.audioBitrate ?? 999) - (b.audioBitrate ?? 999))
+          const res = await fetch(audioFormats[0].url, { signal: AbortSignal.timeout(40_000) })
+          if (!res.ok) throw new Error(`Audio fetch ${res.status}`)
+          const MAX = 24 * 1024 * 1024
+          const reader = res.body!.getReader()
+          const chunks: Uint8Array[] = []
+          let total = 0
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            chunks.push(value)
+            total += value.length
+            if (total >= MAX) break
+          }
+          audioBuffer = Buffer.concat(chunks)
         } else {
-          const MAX_BYTES = 24 * 1024 * 1024
+          // Fresh ytdl stream as last resort
+          const MAX = 24 * 1024 * 1024
           const stream = ytdl(url, { filter: "audioonly", quality: "lowestaudio" })
           const chunks: Buffer[] = []
           let total = 0
@@ -202,7 +181,7 @@ export async function POST(request: NextRequest) {
             const buf = Buffer.from(chunk)
             total += buf.length
             chunks.push(buf)
-            if (total >= MAX_BYTES) break
+            if (total >= MAX) break
           }
           audioBuffer = Buffer.concat(chunks)
         }
@@ -215,11 +194,10 @@ export async function POST(request: NextRequest) {
         })
         captionsText = transcription.text || null
       } catch (audioErr) {
-        console.error("Audio fallback failed:", audioErr)
+        console.error("[youtube-import] audio fallback failed:", audioErr)
       }
     }
 
-    // Build transcript from whatever we managed to collect
     const parts: string[] = []
     if (title) parts.push(`Título del video: ${title}`)
     if (description?.trim()) parts.push(`Descripción del video:\n${decodeEntities(description)}`)
@@ -232,10 +210,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const transcript = parts.join("\n\n")
-    return NextResponse.json({ transcript, source })
+    return NextResponse.json({ transcript: parts.join("\n\n"), source })
   } catch (error) {
-    console.error(error)
+    console.error("[youtube-import] unexpected error:", error)
     return NextResponse.json({ error: "Error al procesar el video" }, { status: 500 })
   }
 }
