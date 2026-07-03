@@ -27,10 +27,12 @@ function YouTubeTab() {
   const [extracted, setExtracted] = useState<ExtractedRecipe | null>(null)
   const [fetching, setFetching] = useState(false)
   const [extracting, setExtracting] = useState(false)
+  const [noTranscript, setNoTranscript] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function handleFetchTranscript() {
     setError(null)
+    setNoTranscript(false)
     setFetching(true)
     try {
       const res = await fetch("/api/ai/import/youtube", {
@@ -40,8 +42,9 @@ function YouTubeTab() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Error al obtener contenido del video")
-      setTranscript(data.transcript)
+      setTranscript(data.transcript ?? "")
       setSource(data.source ?? null)
+      setNoTranscript(!data.hasTranscript)
       setStep("transcript")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido")
@@ -112,15 +115,21 @@ function YouTubeTab() {
               </div>
               <button
                 className="text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => { setStep("input"); setExtracted(null); setSource(null) }}
+                onClick={() => { setStep("input"); setExtracted(null); setSource(null); setNoTranscript(false) }}
               >
                 ← Cambiar video
               </button>
             </div>
+            {noTranscript && (
+              <p className="text-sm text-amber-600 dark:text-amber-400">
+                No encontramos subtítulos automáticos para este video. Podés pegar el transcript manualmente: en YouTube, abrí el video → tres puntos "..." → "Mostrar transcript", copiá el texto y pegalo acá.
+              </p>
+            )}
             <Textarea
               value={transcript}
               onChange={(e) => setTranscript(e.target.value)}
               rows={6}
+              placeholder={noTranscript ? "Pegá el transcript del video acá…" : undefined}
               className="font-mono text-sm"
             />
             {step === "transcript" && (

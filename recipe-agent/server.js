@@ -27,56 +27,67 @@ function emitToJob(jobId, data) {
 
 // ── YouTube caption fetcher ────────────────────────────────────────
 
-// Fetches captions for a YouTube video without relying on any npm package.
-// Mimics a browser request so YouTube serves the full ytInitialPlayerResponse.
-async function fetchYouTubeCaptions(videoId) {
-  const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept-Language': 'es-419,es;q=0.9,en;q=0.8',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Cookie': 'CONSENT=YES+; SOCS=CAI',  // bypass consent gate without cookies
-    },
-    signal: AbortSignal.timeout(15_000),
-  })
+// YouTube blocks Render's IP with 429 + captcha when we fetch directly.
+// Invidious (open-source YouTube frontend) has its own server IPs and a
+// captions API — we route through it to avoid the block.
+const INVIDIOUS_INSTANCES = [
+  'https://inv.nadeko.net',
+  'https://invidious.fdn.fr',
+  'https://yt.cdaut.de',
+  'https://invidious.privacydev.net',
+]
 
-  if (!pageRes.ok) throw new Error(`Watch page ${pageRes.status}`)
-  const html = await pageRes.text()
-  console.log(`[yt] page fetched — ${html.length} chars`)
-
-  // YouTube embeds player data in a script tag as ytInitialPlayerResponse = {...}
-  const match = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});(?:var\s|\s*<\/script>)/)
-  if (!match) {
-    // Log a snippet to see what YouTube actually returned
-    const snippet = html.slice(0, 500).replace(/\s+/g, ' ')
-    console.error('[yt] no ytInitialPlayerResponse — page snippet:', snippet)
-    throw new Error('Player response not found in page HTML')
-  }
-
-  const playerData = JSON.parse(match[1])
-  const tracks = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? []
-  console.log(`[yt] ${tracks.length} caption track(s):`, tracks.map(t => t.languageCode))
-
-  if (!tracks.length) throw new Error('No caption tracks')
-
-  // Prefer Spanish; fall back to any available track
-  const track = tracks.find(t => t.languageCode?.startsWith('es')) ?? tracks[0]
-  const captionUrl = `${track.baseUrl}&fmt=json3`
-  console.log(`[yt] fetching track ${track.languageCode}`)
-
-  const captionRes = await fetch(captionUrl, { signal: AbortSignal.timeout(10_000) })
-  if (!captionRes.ok) throw new Error(`Caption URL ${captionRes.status}`)
-
-  const captionData = await captionRes.json()
-  const text = (captionData.events ?? [])
-    .filter(e => e.segs)
-    .flatMap(e => e.segs)
-    .map(s => s.utf8 ?? '')
+// Parses a WebVTT string into a clean plain-text string.
+function parseVtt(vtt) {
+  return vtt
+    .split('\n')
+    .filter(line => {
+      const t = line.trim()
+      if (!t) return false
+      if (t === 'WEBVTT') return false
+      if (t.startsWith('NOTE') || t.startsWith('STYLE')) return false
+      if (/^\d{2}:\d{2}/.test(t)) return false  // timestamp line
+      if (/^\d+$/.test(t)) return false           // cue index
+      return true
+    })
+    .map(line => line.replace(/<[^>]+>/g, '').trim())  // strip VTT inline tags
+    .filter(Boolean)
     .join(' ')
     .replace(/\s+/g, ' ')
     .trim()
+}
 
-  return text || null
+async function fetchYouTubeCaptions(videoId) {
+  for (const instance of INVIDIOUS_INSTANCES) {
+    try {
+      console.log(`[yt] trying ${instance}`)
+      const listRes = await fetch(`${instance}/api/v1/captions/${videoId}`, {
+        signal: AbortSignal.timeout(8_000),
+      })
+      if (!listRes.ok) { console.log(`[yt] ${instance} list → ${listRes.status}`); continue }
+
+      const { captions = [] } = await listRes.json()
+      console.log(`[yt] ${instance} → ${captions.length} track(s):`, captions.map(c => c.language_code))
+      if (!captions.length) continue
+
+      // Prefer Spanish; fall back to first available
+      const track = captions.find(c => c.language_code?.startsWith('es')) ?? captions[0]
+      const vttUrl = track.url.startsWith('http') ? track.url : `${instance}${track.url}`
+
+      const vttRes = await fetch(vttUrl, { signal: AbortSignal.timeout(10_000) })
+      if (!vttRes.ok) { console.log(`[yt] vtt fetch → ${vttRes.status}`); continue }
+
+      const text = parseVtt(await vttRes.text())
+      if (text) {
+        console.log(`[yt] got ${text.length} chars via ${instance}`)
+        return text
+      }
+      console.log(`[yt] ${instance} returned empty VTT`)
+    } catch (err) {
+      console.log(`[yt] ${instance} error: ${err.message}`)
+    }
+  }
+  return null  // no captions available — caller will surface this to the user
 }
 
 // ── Endpoints ─────────────────────────────────────────────────────
@@ -160,14 +171,8 @@ app.post('/youtube/transcript', async (req, res) => {
       if (oembedRes.ok) { const data = await oembedRes.json(); title = data.title ?? null }
     } catch { /* title stays null */ }
 
-    // Raw captions via direct page fetch — no npm package dependency
-    let transcript = null
-    try {
-      transcript = await fetchYouTubeCaptions(videoId)
-      console.log(`[yt] captions OK — ${transcript?.length ?? 0} chars`)
-    } catch (err) {
-      console.error('[yt] captions failed:', err.message)
-    }
+    // Raw captions via Invidious proxy (avoids Render's YouTube IP block)
+    const transcript = await fetchYouTubeCaptions(videoId)
 
     console.log(`[yt] final: title=${!!title} transcript=${!!transcript}`)
     res.json({ title, transcript })

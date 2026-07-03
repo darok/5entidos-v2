@@ -52,16 +52,10 @@ export async function POST(request: NextRequest) {
     if (title) parts.push(`Título del video: ${title}`)
     if (transcript) parts.push(`Contenido hablado:\n${transcript}`)
 
-    if (!parts.length) {
-      return NextResponse.json(
-        { error: "Este video no tiene subtítulos disponibles. Intentá con el método de audio." },
-        { status: 422 }
-      )
-    }
-
     return NextResponse.json({
       transcript: parts.join("\n\n"),
-      source: transcript ? "subtitles" : "metadata",
+      source: transcript ? "subtitles" : (title ? "metadata" : null),
+      hasTranscript: !!transcript,
     })
   } catch (error) {
     console.error("[youtube-import]", error)
