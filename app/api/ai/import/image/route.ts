@@ -6,7 +6,8 @@ import type { ExtractedRecipe } from "@/types"
 
 export const maxDuration = 30
 
-const MAX_SIZE = 5 * 1024 * 1024 // 5 MB
+const MAX_PER_FILE = 5 * 1024 * 1024 // 5 MB per image
+const MAX_FILES = 5
 const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
 
 export async function POST(request: NextRequest) {
@@ -16,28 +17,46 @@ export async function POST(request: NextRequest) {
 
   try {
     const formData = await request.formData()
-    const file = formData.get("file") as File | null
-    if (!file) return NextResponse.json({ error: "Imagen requerida" }, { status: 400 })
+    const files = formData.getAll("file") as File[]
 
-    if (!ACCEPTED_TYPES.includes(file.type)) {
-      return NextResponse.json(
-        { error: "Solo se aceptan imágenes JPG, PNG, GIF o WebP. Convertí la imagen antes de subir." },
-        { status: 400 }
-      )
+    if (!files.length) return NextResponse.json({ error: "Imagen requerida" }, { status: 400 })
+    if (files.length > MAX_FILES) {
+      return NextResponse.json({ error: `Máximo ${MAX_FILES} imágenes por vez` }, { status: 400 })
     }
 
-    if (file.size > MAX_SIZE) {
-      return NextResponse.json(
-        { error: "La imagen es demasiado grande (máx 5 MB)" },
-        { status: 400 }
-      )
+    for (const file of files) {
+      if (!ACCEPTED_TYPES.includes(file.type)) {
+        return NextResponse.json(
+          { error: "Solo se aceptan imágenes JPG, PNG, GIF o WebP. Convertí la imagen antes de subir." },
+          { status: 400 }
+        )
+      }
+      if (file.size > MAX_PER_FILE) {
+        return NextResponse.json(
+          { error: `"${file.name}" supera el límite de 5 MB por imagen` },
+          { status: 400 }
+        )
+      }
     }
 
-    const buffer = await file.arrayBuffer()
-    const base64 = Buffer.from(buffer).toString("base64")
-    const dataUrl = `data:${file.type};base64,${base64}`
+    // Convert all files to base64 data URLs in parallel
+    const imageBlocks = await Promise.all(
+      files.map(async (file) => {
+        const buffer = await file.arrayBuffer()
+        const base64 = Buffer.from(buffer).toString("base64")
+        return {
+          type: "image_url" as const,
+          image_url: { url: `data:${file.type};base64,${base64}`, detail: "high" as const },
+        }
+      })
+    )
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+
+    const userText =
+      files.length > 1
+        ? "Extraé la receta de estas imágenes. Si son páginas de la misma receta, combiná todo en una sola receta completa."
+        : "Extraé la receta de esta imagen."
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -46,20 +65,14 @@ export async function POST(request: NextRequest) {
           role: "system",
           content: EXTRACT_SYSTEM_PROMPT.replace(
             "Given a spoken recipe transcript in Spanish",
-            "Given an image of a recipe (photo of a book, handwritten card, or printed page)"
+            "Given one or more images of a recipe (photos of book pages, handwritten cards, or printed pages)"
           ),
         },
         {
           role: "user",
           content: [
-            {
-              type: "image_url",
-              image_url: { url: dataUrl, detail: "high" },
-            },
-            {
-              type: "text",
-              text: "Extraé la receta de esta imagen.",
-            },
+            ...imageBlocks,
+            { type: "text" as const, text: userText },
           ],
         },
       ],

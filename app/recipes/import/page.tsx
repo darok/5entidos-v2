@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Upload, Captions, Link as LinkIcon, Image as ImageIcon } from "lucide-react"
+import { Upload, Captions, Link as LinkIcon, Image as ImageIcon, X } from "lucide-react"
 import { ExtractedRecipePreview } from "@/components/extracted-recipe-preview"
 import { useAudioRecipeStore } from "@/lib/stores/audio-recipe"
 import type { ExtractedRecipe } from "@/types"
@@ -23,6 +23,7 @@ function YouTubeTab() {
   const [step, setStep] = useState<YouTubeStep>("input")
   const [url, setUrl] = useState("")
   const [transcript, setTranscript] = useState("")
+  const [source, setSource] = useState<"subtitles" | "audio" | null>(null)
   const [extracted, setExtracted] = useState<ExtractedRecipe | null>(null)
   const [fetching, setFetching] = useState(false)
   const [extracting, setExtracting] = useState(false)
@@ -38,8 +39,9 @@ function YouTubeTab() {
         body: JSON.stringify({ url }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "Error al obtener subtítulos")
+      if (!res.ok) throw new Error(data.error ?? "Error al obtener contenido del video")
       setTranscript(data.transcript)
+      setSource(data.source ?? null)
       setStep("transcript")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido")
@@ -78,7 +80,8 @@ function YouTubeTab() {
     <div className="space-y-6">
       <section className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          Pegá el link de un video de YouTube. Se usarán los subtítulos del video para extraer la receta.
+          Pegá el link de un video de YouTube. Se usan los subtítulos si están disponibles;
+          si no, se transcribe el audio automáticamente. El título y la descripción del video también se consideran.
         </p>
         <div className="flex gap-2">
           <Input
@@ -89,7 +92,7 @@ function YouTubeTab() {
             onKeyDown={(e) => { if (e.key === "Enter" && url.trim()) handleFetchTranscript() }}
           />
           <Button onClick={handleFetchTranscript} disabled={fetching || !url.trim()}>
-            {fetching ? "Obteniendo…" : "Obtener subtítulos →"}
+            {fetching ? "Procesando video…" : "Obtener contenido →"}
           </Button>
         </div>
       </section>
@@ -99,10 +102,17 @@ function YouTubeTab() {
           <Separator />
           <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold">Transcripción</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold">Contenido del video</h2>
+                {source && (
+                  <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
+                    {source === "subtitles" ? "Subtítulos" : "Audio (Whisper)"}
+                  </span>
+                )}
+              </div>
               <button
                 className="text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => { setStep("input"); setExtracted(null) }}
+                onClick={() => { setStep("input"); setExtracted(null); setSource(null) }}
               >
                 ← Cambiar video
               </button>
@@ -132,7 +142,7 @@ function YouTubeTab() {
                 className="text-xs text-muted-foreground hover:text-foreground"
                 onClick={() => setStep("transcript")}
               >
-                ← Editar transcripción
+                ← Editar contenido
               </button>
             </div>
             <ExtractedRecipePreview
@@ -154,44 +164,59 @@ function YouTubeTab() {
 
 type FotoStep = "input" | "preview"
 
+interface FilePreview {
+  file: File
+  url: string
+}
+
 function FotoTab() {
   const router = useRouter()
   const { setData } = useAudioRecipeStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [step, setStep] = useState<FotoStep>("input")
-  const [file, setFile] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previews, setPreviews] = useState<FilePreview[]>([])
   const [extracted, setExtracted] = useState<ExtractedRecipe | null>(null)
   const [extracting, setExtracting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    if (!f) return
+    const selected = Array.from(e.target.files ?? [])
+    if (!selected.length) return
     setError(null)
 
-    if (!f.type.startsWith("image/")) {
-      setError("Solo se aceptan imágenes.")
-      return
-    }
-    if (f.size > 5 * 1024 * 1024) {
-      setError("La imagen es demasiado grande (máx 5 MB). Comprimila antes de subir.")
-      return
+    const ACCEPTED = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+    const MAX_SIZE = 5 * 1024 * 1024
+
+    for (const f of selected) {
+      if (!ACCEPTED.includes(f.type)) {
+        setError("Solo se aceptan imágenes JPG, PNG, GIF o WebP.")
+        return
+      }
+      if (f.size > MAX_SIZE) {
+        setError(`"${f.name}" supera el límite de 5 MB por imagen.`)
+        return
+      }
     }
 
-    setFile(f)
-    const objectUrl = URL.createObjectURL(f)
-    setPreviewUrl(objectUrl)
+    const next: FilePreview[] = selected.map((f) => ({ file: f, url: URL.createObjectURL(f) }))
+    setPreviews((prev) => [...prev, ...next])
+  }
+
+  function removeFile(index: number) {
+    setPreviews((prev) => {
+      URL.revokeObjectURL(prev[index].url)
+      return prev.filter((_, i) => i !== index)
+    })
   }
 
   async function handleExtract() {
-    if (!file) return
+    if (!previews.length) return
     setError(null)
     setExtracting(true)
     try {
       const formData = new FormData()
-      formData.append("file", file)
+      previews.forEach(({ file }) => formData.append("file", file))
       const res = await fetch("/api/ai/import/image", { method: "POST", body: formData })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Error al analizar imagen")
@@ -211,8 +236,8 @@ function FotoTab() {
   }
 
   function handleReset() {
-    setFile(null)
-    setPreviewUrl(null)
+    previews.forEach(({ url }) => URL.revokeObjectURL(url))
+    setPreviews([])
     setExtracted(null)
     setStep("input")
     setError(null)
@@ -223,40 +248,77 @@ function FotoTab() {
     <div className="space-y-6">
       <section className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          Subí una foto de una receta escrita o impresa. Funciona mejor con imágenes claras y bien enfocadas.
+          Subí una o varias fotos de una receta escrita o impresa (p. ej., varias páginas de un libro).
+          Funciona mejor con imágenes claras y bien enfocadas.
         </p>
 
-        {step === "input" ? (
+        {step === "input" && (
           <div className="space-y-3">
-            <div
-              className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:bg-muted/50 transition-colors"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {previewUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={previewUrl} alt="Vista previa" className="max-h-48 mx-auto rounded object-contain" />
-              ) : (
+            {/* Thumbnails grid */}
+            {previews.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {previews.map(({ url, file }, i) => (
+                  <div key={i} className="relative group">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={url}
+                      alt={file.name}
+                      className="h-24 w-24 object-cover rounded border"
+                    />
+                    <button
+                      onClick={() => removeFile(i)}
+                      className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="Eliminar imagen"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                {/* Add more button */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-24 w-24 border-2 border-dashed rounded flex items-center justify-center text-muted-foreground hover:bg-muted/50 transition-colors"
+                  aria-label="Agregar más imágenes"
+                >
+                  <Upload className="h-5 w-5" />
+                </button>
+              </div>
+            )}
+
+            {/* Drop zone shown only when no files yet */}
+            {previews.length === 0 && (
+              <div
+                className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
                   <Upload className="h-8 w-8" />
-                  <span className="text-sm">Hacé clic para seleccionar una imagen</span>
-                  <span className="text-xs">JPG, PNG, WebP — máx 5 MB</span>
+                  <span className="text-sm">Hacé clic para seleccionar imágenes</span>
+                  <span className="text-xs">JPG, PNG, WebP — máx 5 MB por imagen</span>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+
             <input
               ref={fileInputRef}
               type="file"
               accept="image/jpeg,image/png,image/gif,image/webp"
+              multiple
               className="hidden"
               onChange={handleFileChange}
             />
-            {file && (
+
+            {previews.length > 0 && (
               <Button onClick={handleExtract} disabled={extracting}>
-                {extracting ? "Analizando imagen…" : "Extraer receta →"}
+                {extracting
+                  ? "Analizando…"
+                  : previews.length === 1
+                    ? "Extraer receta →"
+                    : `Extraer receta de ${previews.length} imágenes →`}
               </Button>
             )}
           </div>
-        ) : null}
+        )}
       </section>
 
       {step === "preview" && extracted && (
@@ -269,13 +331,16 @@ function FotoTab() {
                 className="text-xs text-muted-foreground hover:text-foreground"
                 onClick={handleReset}
               >
-                ← Cambiar imagen
+                ← Cambiar imágenes
               </button>
             </div>
-            {previewUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={previewUrl} alt="Imagen importada" className="max-h-32 rounded border object-contain" />
-            )}
+            {/* Compact thumbnail strip for reference */}
+            <div className="flex gap-2 flex-wrap">
+              {previews.map(({ url, file }, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={i} src={url} alt={file.name} className="h-16 rounded border object-cover" />
+              ))}
+            </div>
             <ExtractedRecipePreview
               extracted={extracted}
               onLoadForm={handleLoadForm}
