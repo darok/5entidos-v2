@@ -2,7 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import { randomUUID } from 'node:crypto'
 import { runAgent } from './agent.js'
-import { pendingResponses } from './tools.js'
+import { pendingResponses, fetchYoutubeTranscript } from './tools.js'
 
 const app = express()
 // Reflect all origins — SSE is read-only and jobIds are unguessable UUIDs
@@ -74,6 +74,32 @@ app.post('/recipe/respond/:jobId', (req, res) => {
   resolve(input.trim())
   pendingResponses.delete(req.params.jobId)
   res.json({ ok: true })
+})
+
+// Proxy endpoint for Vercel: fetches YouTube transcript + title from Render's non-blocked IPs
+app.post('/youtube/transcript', async (req, res) => {
+  const { url } = req.body
+  if (!url?.trim()) return res.status(400).json({ error: 'URL requerida' })
+
+  try {
+    // oEmbed for title (public API, always reliable)
+    let title = null
+    try {
+      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`)
+      if (oembedRes.ok) {
+        const data = await oembedRes.json()
+        title = data.title ?? null
+      }
+    } catch { /* title stays null */ }
+
+    const result = await fetchYoutubeTranscript(url)
+    // fetchYoutubeTranscript returns an error string when it fails, not a throw
+    const isError = result.startsWith('Transcripción no disponible') || result.startsWith('URL de YouTube')
+
+    res.json({ title, transcript: isError ? null : result })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
 // ── Start ─────────────────────────────────────────────────────────
