@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
       fetchCaptionsViaPackage(videoId),
     ])
 
-    let title: string | null = ytdlData?.title ?? oembedTitle
+    const title: string | null = ytdlData?.title ?? oembedTitle
     const description: string | null = ytdlData?.description ?? null
     let captionsText: string | null = ytdlData?.captionsText ?? captionsFromPackage
     const ytdlFormats: ytdl.videoFormat[] = ytdlData?.formats ?? []
