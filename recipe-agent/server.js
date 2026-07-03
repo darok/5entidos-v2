@@ -3,7 +3,6 @@ import cors from 'cors'
 import { randomUUID } from 'node:crypto'
 import { runAgent } from './agent.js'
 import { pendingResponses } from './tools.js'
-import { YoutubeTranscript } from 'youtube-transcript'
 
 const app = express()
 // Reflect all origins — SSE is read-only and jobIds are unguessable UUIDs
@@ -24,6 +23,60 @@ function emitToJob(jobId, data) {
   job.sseRes?.write(`data: ${JSON.stringify(data)}\n\n`)
   if (data.type === 'done') job.status = 'done'
   if (data.type === 'error') job.status = 'error'
+}
+
+// ── YouTube caption fetcher ────────────────────────────────────────
+
+// Fetches captions for a YouTube video without relying on any npm package.
+// Mimics a browser request so YouTube serves the full ytInitialPlayerResponse.
+async function fetchYouTubeCaptions(videoId) {
+  const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept-Language': 'es-419,es;q=0.9,en;q=0.8',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Cookie': 'CONSENT=YES+; SOCS=CAI',  // bypass consent gate without cookies
+    },
+    signal: AbortSignal.timeout(15_000),
+  })
+
+  if (!pageRes.ok) throw new Error(`Watch page ${pageRes.status}`)
+  const html = await pageRes.text()
+  console.log(`[yt] page fetched — ${html.length} chars`)
+
+  // YouTube embeds player data in a script tag as ytInitialPlayerResponse = {...}
+  const match = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});(?:var\s|\s*<\/script>)/)
+  if (!match) {
+    // Log a snippet to see what YouTube actually returned
+    const snippet = html.slice(0, 500).replace(/\s+/g, ' ')
+    console.error('[yt] no ytInitialPlayerResponse — page snippet:', snippet)
+    throw new Error('Player response not found in page HTML')
+  }
+
+  const playerData = JSON.parse(match[1])
+  const tracks = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? []
+  console.log(`[yt] ${tracks.length} caption track(s):`, tracks.map(t => t.languageCode))
+
+  if (!tracks.length) throw new Error('No caption tracks')
+
+  // Prefer Spanish; fall back to any available track
+  const track = tracks.find(t => t.languageCode?.startsWith('es')) ?? tracks[0]
+  const captionUrl = `${track.baseUrl}&fmt=json3`
+  console.log(`[yt] fetching track ${track.languageCode}`)
+
+  const captionRes = await fetch(captionUrl, { signal: AbortSignal.timeout(10_000) })
+  if (!captionRes.ok) throw new Error(`Caption URL ${captionRes.status}`)
+
+  const captionData = await captionRes.json()
+  const text = (captionData.events ?? [])
+    .filter(e => e.segs)
+    .flatMap(e => e.segs)
+    .map(s => s.utf8 ?? '')
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return text || null
 }
 
 // ── Endpoints ─────────────────────────────────────────────────────
@@ -107,47 +160,13 @@ app.post('/youtube/transcript', async (req, res) => {
       if (oembedRes.ok) { const data = await oembedRes.json(); title = data.title ?? null }
     } catch { /* title stays null */ }
 
-    // Raw captions — no AI processing, that happens in the extract step
+    // Raw captions via direct page fetch — no npm package dependency
     let transcript = null
-
-    // Attempt 1: youtube-transcript package
     try {
-      let items
-      try { items = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'es' }) }
-      catch (e1) {
-        console.log(`[yt] ES captions failed (${e1.message}), retrying without lang`)
-        items = await YoutubeTranscript.fetchTranscript(videoId)
-      }
-      transcript = items.map(t => t.text).join(' ').replace(/\s+/g, ' ').trim() || null
-      console.log(`[yt] package OK — ${items.length} items, ${transcript?.length} chars`)
-    } catch (pkgErr) {
-      console.error('[yt] package failed:', pkgErr.message)
-    }
-
-    // Attempt 2: direct timedtext API (different code path from youtube-transcript)
-    if (!transcript) {
-      try {
-        const ttRes = await fetch(
-          `https://www.youtube.com/api/timedtext?v=${videoId}&lang=es&fmt=json3`,
-          { signal: AbortSignal.timeout(8000) }
-        )
-        if (ttRes.ok) {
-          const ttData = await ttRes.json()
-          const text = (ttData.events ?? [])
-            .filter(e => e.segs)
-            .flatMap(e => e.segs)
-            .map(s => s.utf8 ?? '')
-            .join(' ')
-            .replace(/\s+/g, ' ')
-            .trim()
-          if (text) { transcript = text; console.log(`[yt] timedtext OK — ${text.length} chars`) }
-          else console.log('[yt] timedtext returned empty')
-        } else {
-          console.log(`[yt] timedtext status ${ttRes.status}`)
-        }
-      } catch (ttErr) {
-        console.error('[yt] timedtext failed:', ttErr.message)
-      }
+      transcript = await fetchYouTubeCaptions(videoId)
+      console.log(`[yt] captions OK — ${transcript?.length ?? 0} chars`)
+    } catch (err) {
+      console.error('[yt] captions failed:', err.message)
     }
 
     console.log(`[yt] final: title=${!!title} transcript=${!!transcript}`)
