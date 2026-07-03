@@ -7,8 +7,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { Mic, Square, Upload, ArrowRight } from "lucide-react"
+import { Mic, Square, Upload } from "lucide-react"
 import { useAudioRecipeStore } from "@/lib/stores/audio-recipe"
+import { ExtractedRecipePreview } from "@/components/extracted-recipe-preview"
 import type { ExtractedRecipe } from "@/types"
 
 type Step = "record" | "transcript" | "preview" | "done"
@@ -193,42 +194,12 @@ export default function AudioPage() {
           <Separator />
           <section className="space-y-4">
             <h2 className="font-semibold text-lg">3. Vista previa</h2>
-            <div className="rounded-md border p-4 space-y-3 text-sm">
-              <p><span className="font-medium">Título:</span> {extracted.title}</p>
-              {extracted.description && <p><span className="font-medium">Descripción:</span> {extracted.description}</p>}
-              {extracted.servings != null && <p><span className="font-medium">Porciones:</span> {extracted.servings}</p>}
-              {extracted.ingredients?.length > 0 && (
-                <div>
-                  <p className="font-medium mb-1">Ingredientes:</p>
-                  <ul className="list-disc list-inside space-y-0.5 text-muted-foreground">
-                    {extracted.ingredients.map((ing, i) => (
-                      <li key={i}>
-                        {ing.quantity != null ? `${ing.quantity} ` : ""}
-                        {ing.unit ? `${ing.unit} ` : ""}
-                        {ing.name}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {extracted.steps?.length > 0 && (
-                <div>
-                  <p className="font-medium mb-1">Pasos:</p>
-                  <ol className="list-decimal list-inside space-y-0.5 text-muted-foreground">
-                    {extracted.steps.map((s, i) => <li key={i}>{s}</li>)}
-                  </ol>
-                </div>
-              )}
-            </div>
-            <div className="flex gap-3">
-              <Button onClick={handleLoadForm}>
-                <ArrowRight className="mr-2 h-4 w-4" />
-                Cargar al formulario
-              </Button>
-              <Button variant="outline" onClick={handleExtract} disabled={extracting}>
-                {extracting ? "Re-extrayendo…" : "Re-extraer"}
-              </Button>
-            </div>
+            <ExtractedRecipePreview
+              extracted={extracted}
+              onLoadForm={handleLoadForm}
+              onReExtract={handleExtract}
+              reExtracting={extracting}
+            />
           </section>
         </>
       )}
