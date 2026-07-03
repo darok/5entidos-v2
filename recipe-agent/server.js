@@ -109,13 +109,48 @@ app.post('/youtube/transcript', async (req, res) => {
 
     // Raw captions — no AI processing, that happens in the extract step
     let transcript = null
+
+    // Attempt 1: youtube-transcript package
     try {
       let items
       try { items = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'es' }) }
-      catch { items = await YoutubeTranscript.fetchTranscript(videoId) }
+      catch (e1) {
+        console.log(`[yt] ES captions failed (${e1.message}), retrying without lang`)
+        items = await YoutubeTranscript.fetchTranscript(videoId)
+      }
       transcript = items.map(t => t.text).join(' ').replace(/\s+/g, ' ').trim() || null
-    } catch { /* no captions available for this video */ }
+      console.log(`[yt] package OK — ${items.length} items, ${transcript?.length} chars`)
+    } catch (pkgErr) {
+      console.error('[yt] package failed:', pkgErr.message)
+    }
 
+    // Attempt 2: direct timedtext API (different code path from youtube-transcript)
+    if (!transcript) {
+      try {
+        const ttRes = await fetch(
+          `https://www.youtube.com/api/timedtext?v=${videoId}&lang=es&fmt=json3`,
+          { signal: AbortSignal.timeout(8000) }
+        )
+        if (ttRes.ok) {
+          const ttData = await ttRes.json()
+          const text = (ttData.events ?? [])
+            .filter(e => e.segs)
+            .flatMap(e => e.segs)
+            .map(s => s.utf8 ?? '')
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+          if (text) { transcript = text; console.log(`[yt] timedtext OK — ${text.length} chars`) }
+          else console.log('[yt] timedtext returned empty')
+        } else {
+          console.log(`[yt] timedtext status ${ttRes.status}`)
+        }
+      } catch (ttErr) {
+        console.error('[yt] timedtext failed:', ttErr.message)
+      }
+    }
+
+    console.log(`[yt] final: title=${!!title} transcript=${!!transcript}`)
     res.json({ title, transcript })
   } catch (err) {
     res.status(500).json({ error: err.message })
