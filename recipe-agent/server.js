@@ -2,7 +2,8 @@ import express from 'express'
 import cors from 'cors'
 import { randomUUID } from 'node:crypto'
 import { runAgent } from './agent.js'
-import { pendingResponses, fetchYoutubeTranscript } from './tools.js'
+import { pendingResponses } from './tools.js'
+import { YoutubeTranscript } from 'youtube-transcript'
 
 const app = express()
 // Reflect all origins — SSE is read-only and jobIds are unguessable UUIDs
@@ -76,27 +77,46 @@ app.post('/recipe/respond/:jobId', (req, res) => {
   res.json({ ok: true })
 })
 
-// Proxy endpoint for Vercel: fetches YouTube transcript + title from Render's non-blocked IPs
+// Proxy endpoint for Vercel: fetches YouTube captions + title from Render's non-blocked IPs.
+// Does NOT call stripNonRecipeContent — the raw transcript goes straight to the extract endpoint.
 app.post('/youtube/transcript', async (req, res) => {
   const { url } = req.body
   if (!url?.trim()) return res.status(400).json({ error: 'URL requerida' })
 
   try {
-    // oEmbed for title (public API, always reliable)
+    // Extract video ID (handles watch, youtu.be, shorts)
+    let videoId = null
+    try {
+      const parsed = new URL(url)
+      if (parsed.hostname === 'youtu.be') {
+        videoId = parsed.pathname.slice(1).split('?')[0] || null
+      } else if (parsed.searchParams.has('v')) {
+        videoId = parsed.searchParams.get('v')
+      } else {
+        const m = parsed.pathname.match(/\/shorts\/([^/?]+)/)
+        if (m) videoId = m[1]
+      }
+    } catch { /* invalid URL */ }
+
+    if (!videoId) return res.status(400).json({ error: 'URL de YouTube inválida' })
+
+    // Title via oEmbed (reliable public API)
     let title = null
     try {
       const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`)
-      if (oembedRes.ok) {
-        const data = await oembedRes.json()
-        title = data.title ?? null
-      }
+      if (oembedRes.ok) { const data = await oembedRes.json(); title = data.title ?? null }
     } catch { /* title stays null */ }
 
-    const result = await fetchYoutubeTranscript(url)
-    // fetchYoutubeTranscript returns an error string when it fails, not a throw
-    const isError = result.startsWith('Transcripción no disponible') || result.startsWith('URL de YouTube')
+    // Raw captions — no AI processing, that happens in the extract step
+    let transcript = null
+    try {
+      let items
+      try { items = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'es' }) }
+      catch { items = await YoutubeTranscript.fetchTranscript(videoId) }
+      transcript = items.map(t => t.text).join(' ').replace(/\s+/g, ' ').trim() || null
+    } catch { /* no captions available for this video */ }
 
-    res.json({ title, transcript: isError ? null : result })
+    res.json({ title, transcript })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
