@@ -33,12 +33,49 @@ function emitToJob(jobId, data) {
   if (data.type === 'error') job.status = 'error'
 }
 
+// ── Whisper ──────────────────────────────────────────────────────
+
+// Sends an audio buffer to OpenAI Whisper. Returns transcript text, or null on failure.
+async function transcribeWithWhisper(buffer, filename, mimeType) {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) { console.error('[whisper] OPENAI_API_KEY not set on Render'); return null }
+
+  const form = new FormData()
+  form.append('file', new Blob([buffer], { type: mimeType }), filename)
+  form.append('model', 'whisper-1')
+  form.append('language', 'es')
+
+  const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+    signal: AbortSignal.timeout(120_000),
+  })
+  if (!whisperRes.ok) { console.error('[whisper] error:', whisperRes.status, await whisperRes.text().catch(() => '')); return null }
+
+  const { text } = await whisperRes.json()
+  console.log(`[whisper] transcript: ${text?.length ?? 0} chars`)
+  return text || null
+}
+
+// Maps a Content-Type to a filename Whisper recognizes (it uses the extension as a format hint).
+function filenameForMimeType(mimeType) {
+  const ext = {
+    'audio/mpeg': 'mp3', 'audio/mp3': 'mp3',
+    'audio/wav': 'wav', 'audio/x-wav': 'wav',
+    'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/aac': 'm4a',
+    'audio/ogg': 'ogg',
+    'audio/webm': 'webm', 'video/webm': 'webm',
+    'video/mp4': 'mp4',
+  }[mimeType?.split(';')[0]?.trim().toLowerCase()] ?? 'mp3'
+  return `audio.${ext}`
+}
+
 // ── YouTube audio fallback ─────────────────────────────────────────
 
 // Downloads audio via yt-dlp, transcribes with Whisper. Returns text or null.
 async function getYtAudioTranscript(videoId) {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) { console.error('[yt] OPENAI_API_KEY not set on Render — audio transcription unavailable'); return null }
+  if (!process.env.OPENAI_API_KEY) { console.error('[yt] OPENAI_API_KEY not set on Render — audio transcription unavailable'); return null }
 
   const dir = await mkdtemp(join(tmpdir(), 'recipe-ytaudio-'))
   try {
@@ -62,22 +99,7 @@ async function getYtAudioTranscript(videoId) {
     }
     console.log(`[yt] audio downloaded: ${(buffer.length / 1e6).toFixed(1)} MB, sending to Whisper`)
 
-    const form = new FormData()
-    form.append('file', new Blob([buffer], { type: 'audio/mpeg' }), audioFile)
-    form.append('model', 'whisper-1')
-    form.append('language', 'es')
-
-    const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: form,
-      signal: AbortSignal.timeout(120_000),
-    })
-    if (!whisperRes.ok) { console.error('[yt] Whisper error:', whisperRes.status, await whisperRes.text().catch(() => '')); return null }
-
-    const { text } = await whisperRes.json()
-    console.log(`[yt] Whisper transcript: ${text?.length ?? 0} chars`)
-    return text || null
+    return await transcribeWithWhisper(buffer, audioFile, 'audio/mpeg')
   } catch (err) {
     console.error('[yt] audio transcription error:', err.message?.slice(0, 300))
     return null
@@ -180,6 +202,32 @@ app.post('/youtube/start', (req, res) => {
   })
 
   res.json({ jobId })
+})
+
+// Accepts a raw audio/video file body (up to Whisper's 25MB limit) and transcribes it.
+// Called directly from the browser, bypassing Vercel — Vercel's serverless functions cap
+// request bodies at ~4.5MB, well under what a real video's audio track needs.
+app.post('/whisper/transcribe', express.raw({ limit: '25mb', type: () => true }), async (req, res) => {
+  const buffer = req.body
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    return res.status(400).json({ error: 'No se recibió ningún archivo de audio' })
+  }
+
+  const mimeType = req.headers['content-type'] ?? 'audio/mpeg'
+  const transcript = await transcribeWithWhisper(buffer, filenameForMimeType(mimeType), mimeType)
+  if (!transcript) return res.status(502).json({ error: 'No se pudo transcribir el audio' })
+
+  res.json({ transcript })
+})
+
+// Returns JSON instead of Express's default HTML/plain-text error body (e.g. oversized
+// uploads) — a non-JSON error body breaks the client's res.json() parsing.
+app.use((err, req, res, next) => {
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'El archivo es demasiado grande (máx. 25 MB)' })
+  }
+  console.error('[server] unhandled error:', err.message)
+  res.status(500).json({ error: 'Error interno del servidor' })
 })
 
 // ── Start ─────────────────────────────────────────────────────────

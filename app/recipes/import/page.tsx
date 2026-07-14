@@ -82,6 +82,7 @@ function YouTubeTab() {
   const [audioTranscript, setAudioTranscript] = useState("")
   const [audioFound, setAudioFound] = useState(false)
   const [uploadingAudio, setUploadingAudio] = useState(false)
+  const [agentOrigin, setAgentOrigin] = useState<string | null>(null)
   const [extracted, setExtracted] = useState<ExtractedRecipe | null>(null)
   const [fetching, setFetching] = useState(false)
   const [statusText, setStatusText] = useState("")
@@ -124,6 +125,7 @@ function YouTubeTab() {
       clearTimeout(wakeupTimer)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Error al iniciar la importación")
+      setAgentOrigin(new URL(data.streamUrl).origin)
 
       const es = new EventSource(data.streamUrl)
       esRef.current = es
@@ -176,17 +178,25 @@ function YouTubeTab() {
 
   // Manual fallback when automatic audio transcription didn't find anything: the user
   // extracts/downloads the audio themselves with an external tool and uploads it here.
+  // Goes straight to the Render agent (not through Vercel) since Vercel's serverless
+  // functions cap request bodies at ~4.5MB — well under a real video's audio track.
   async function handleUploadAudio(file: File) {
     setError(null)
     if (file.size > WHISPER_MAX_SIZE) {
       setError(`El archivo supera el límite de ${WHISPER_MAX_SIZE / 1e6} MB de Whisper.`)
       return
     }
+    if (!agentOrigin) {
+      setError("No se pudo determinar el servidor de transcripción. Volvé a obtener el contenido del video.")
+      return
+    }
     setUploadingAudio(true)
     try {
-      const formData = new FormData()
-      formData.append("file", file)
-      const res = await fetch("/api/ai/transcribe", { method: "POST", body: formData })
+      const res = await fetch(`${agentOrigin}/whisper/transcribe`, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "audio/mpeg" },
+        body: file,
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Error al transcribir el audio")
       setAudioTranscript(data.transcript ?? "")
