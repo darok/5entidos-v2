@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 
 // YouTube fetches are proxied through the Render agent server because Vercel's
 // datacenter IPs are blocked by YouTube. Render's IPs are not.
-const AGENT_URL = process.env.AGENT_SERVER_URL ?? "https://fiveentidos-v2.onrender.com"
+const AGENT_URL = process.env.AGENT_SERVER_URL ?? "https://fiveentidos-v2-docker.onrender.com"
 
 function extractVideoId(url: string): string | null {
   try {
