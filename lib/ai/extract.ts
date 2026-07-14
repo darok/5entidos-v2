@@ -2,7 +2,13 @@ import OpenAI from "openai"
 import type { ExtractedRecipe } from "@/types"
 
 // Shared system prompt used by all recipe extraction paths (audio, youtube, link)
-export const EXTRACT_SYSTEM_PROMPT = `You are a recipe extraction assistant. Given a spoken recipe transcript in Spanish, extract the recipe information and return it as JSON.
+export const EXTRACT_SYSTEM_PROMPT = `You are a recipe extraction assistant. Given text describing a recipe in Spanish — a spoken transcript, subtitles, a video description, or scraped web page text — extract the recipe information and return it as JSON.
+
+The input sometimes contains multiple labeled sections (e.g. "Subtítulos", "Transcripción de audio", "Descripción del video"). When it does, synthesize across ALL of them — do not just use the first or most cleanly formatted one:
+- Spoken content (subtítulos / transcripción de audio) is usually the actual step-by-step walkthrough — treat it as the primary source for steps and process details.
+- The video description is often a supplementary written summary — cross-check it for precise ingredient quantities/units that may be vague or missing in the spoken content, and pull in any ingredients, steps, or details it mentions that weren't said aloud.
+- If a quantity or detail is stated differently across sections, prefer the more precise/explicit one, but don't discard details that only appear in a single section.
+- Never simply copy one section verbatim — combine what each section uniquely contributes into one coherent recipe.
 
 Return ONLY valid JSON with this exact structure:
 {

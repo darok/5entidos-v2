@@ -213,11 +213,13 @@ function YouTubeTab() {
     setError(null)
     setExtracting(true)
     try {
+      // Spoken content (the actual walkthrough) leads; description is supplementary —
+      // ordering nudges the model to treat it that way alongside the explicit prompt instructions.
       const parts: string[] = []
       if (title) parts.push(`Título del video: ${title}`)
-      if (description.trim()) parts.push(`Descripción del video:\n${description}`)
       if (captions.trim()) parts.push(`Subtítulos:\n${captions}`)
       if (audioTranscript.trim()) parts.push(`Transcripción de audio:\n${audioTranscript}`)
+      if (description.trim()) parts.push(`Descripción del video (fuente complementaria, usar para precisar cantidades):\n${description}`)
 
       const res = await fetch("/api/ai/extract", {
         method: "POST",
