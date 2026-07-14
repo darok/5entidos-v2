@@ -16,33 +16,98 @@ import type { ExtractedRecipe } from "@/types"
 
 type YouTubeStep = "input" | "transcript" | "preview"
 
+// Editable box showing whether a given content source was found, plus its text.
+function ContentBox({
+  label,
+  found,
+  notFoundLabel = "No encontrado",
+  value,
+  onChange,
+  placeholder,
+  hint,
+  extra,
+  rows = 4,
+}: {
+  label: string
+  found: boolean
+  notFoundLabel?: string
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  hint?: string
+  extra?: React.ReactNode
+  rows?: number
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium">{label}</span>
+        <span
+          className={
+            found
+              ? "text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400"
+              : "text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
+          }
+        >
+          {found ? "✓ Encontrado" : `✗ ${notFoundLabel}`}
+        </span>
+      </div>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {extra}
+      <Textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={rows}
+        placeholder={placeholder}
+        className="font-mono text-sm"
+      />
+    </div>
+  )
+}
+
+const WHISPER_ACCEPT = "audio/*,video/mp4,video/webm,.m4a,.mp3,.wav,.ogg"
+const WHISPER_MAX_SIZE = 25 * 1024 * 1024 // OpenAI Whisper's file size limit
+
 function YouTubeTab() {
   const router = useRouter()
   const { setData } = useAudioRecipeStore()
 
   const [step, setStep] = useState<YouTubeStep>("input")
   const [url, setUrl] = useState("")
-  const [transcript, setTranscript] = useState("")
-  const [source, setSource] = useState<"subtitles" | "audio" | null>(null)
+  const [title, setTitle] = useState<string | null>(null)
+  const [description, setDescription] = useState("")
+  const [descriptionFound, setDescriptionFound] = useState(false)
+  const [captions, setCaptions] = useState("")
+  const [captionsFound, setCaptionsFound] = useState(false)
+  const [audioTranscript, setAudioTranscript] = useState("")
+  const [audioFound, setAudioFound] = useState(false)
+  const [uploadingAudio, setUploadingAudio] = useState(false)
   const [extracted, setExtracted] = useState<ExtractedRecipe | null>(null)
   const [fetching, setFetching] = useState(false)
   const [statusText, setStatusText] = useState("")
   const [extracting, setExtracting] = useState(false)
-  const [noTranscript, setNoTranscript] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const esRef = useRef<EventSource | null>(null)
+  const audioInputRef = useRef<HTMLInputElement>(null)
 
   const closeStream = useCallback(() => {
     esRef.current?.close()
     esRef.current = null
   }, [])
 
+  function resetContent() {
+    setTitle(null)
+    setDescription(""); setDescriptionFound(false)
+    setCaptions(""); setCaptionsFound(false)
+    setAudioTranscript(""); setAudioFound(false)
+  }
+
   // Starts a background import job on the agent server and streams progress via SSE.
   // This avoids racing a fixed timeout — the captions→audio→Whisper fallback chain
   // can take as long as it needs instead of failing on a Vercel function deadline.
   async function handleFetchTranscript() {
     setError(null)
-    setNoTranscript(false)
+    resetContent()
     setFetching(true)
     setStatusText("Conectando…")
 
@@ -73,16 +138,18 @@ function YouTubeTab() {
             break
           case "done": {
             closeStream()
-            const title = event.title as string | null
-            const description = event.description as string | null
-            const spoken = event.transcript as string | null
-            const parts: string[] = []
-            if (title) parts.push(`Título del video: ${title}`)
-            if (description) parts.push(`Descripción del video:\n${description}`)
-            if (spoken) parts.push(`Contenido hablado:\n${spoken}`)
-            setTranscript(parts.join("\n\n"))
-            setSource((event.source as "subtitles" | "audio" | null) ?? null)
-            setNoTranscript(!spoken)
+            setTitle((event.title as string | null) ?? null)
+            const desc = (event.description as string | null) ?? ""
+            setDescription(desc)
+            setDescriptionFound(!!desc)
+
+            const src = event.source as "subtitles" | "audio" | null
+            const spoken = (event.transcript as string | null) ?? ""
+            setCaptions(src === "subtitles" ? spoken : "")
+            setCaptionsFound(src === "subtitles" && !!spoken)
+            setAudioTranscript(src === "audio" ? spoken : "")
+            setAudioFound(src === "audio" && !!spoken)
+
             setStep("transcript")
             setFetching(false)
             break
@@ -107,14 +174,45 @@ function YouTubeTab() {
     }
   }
 
+  // Manual fallback when automatic audio transcription didn't find anything: the user
+  // extracts/downloads the audio themselves with an external tool and uploads it here.
+  async function handleUploadAudio(file: File) {
+    setError(null)
+    if (file.size > WHISPER_MAX_SIZE) {
+      setError(`El archivo supera el límite de ${WHISPER_MAX_SIZE / 1e6} MB de Whisper.`)
+      return
+    }
+    setUploadingAudio(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const res = await fetch("/api/ai/transcribe", { method: "POST", body: formData })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Error al transcribir el audio")
+      setAudioTranscript(data.transcript ?? "")
+      setAudioFound(!!data.transcript)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error desconocido")
+    } finally {
+      setUploadingAudio(false)
+      if (audioInputRef.current) audioInputRef.current.value = ""
+    }
+  }
+
   async function handleExtract() {
     setError(null)
     setExtracting(true)
     try {
+      const parts: string[] = []
+      if (title) parts.push(`Título del video: ${title}`)
+      if (description.trim()) parts.push(`Descripción del video:\n${description}`)
+      if (captions.trim()) parts.push(`Subtítulos:\n${captions}`)
+      if (audioTranscript.trim()) parts.push(`Transcripción de audio:\n${audioTranscript}`)
+
       const res = await fetch("/api/ai/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript }),
+        body: JSON.stringify({ transcript: parts.join("\n\n") }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Error al extraer receta")
@@ -133,12 +231,14 @@ function YouTubeTab() {
     router.push("/recipes/new")
   }
 
+  const hasAnyContent = !!(description.trim() || captions.trim() || audioTranscript.trim())
+
   return (
     <div className="space-y-6">
       <section className="space-y-3">
         <p className="text-sm text-muted-foreground">
           Pegá el link de un video de YouTube. Se usan los subtítulos si están disponibles;
-          si no, se transcribe el audio automáticamente. El título y la descripción del video también se consideran.
+          si no, se intenta transcribir el audio automáticamente. El título y la descripción del video también se consideran.
         </p>
         <div className="flex gap-2">
           <Input
@@ -157,37 +257,71 @@ function YouTubeTab() {
       {(step === "transcript" || step === "preview") && (
         <>
           <Separator />
-          <section className="space-y-3">
+          <section className="space-y-5">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h2 className="font-semibold">Contenido del video</h2>
-                {source && (
-                  <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
-                    {source === "subtitles" ? "Subtítulos" : "Audio (Whisper)"}
-                  </span>
-                )}
-              </div>
+              <h2 className="font-semibold">Contenido del video</h2>
               <button
                 className="text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => { closeStream(); setStep("input"); setExtracted(null); setSource(null); setNoTranscript(false) }}
+                onClick={() => { closeStream(); setStep("input"); setExtracted(null); resetContent() }}
               >
                 ← Cambiar video
               </button>
             </div>
-            {noTranscript && (
-              <p className="text-sm text-amber-600 dark:text-amber-400">
-                No encontramos subtítulos automáticos para este video. Podés pegar el transcript manualmente: en YouTube, abrí el video → tres puntos &quot;...&quot; → &quot;Mostrar transcript&quot;, copiá el texto y pegalo acá.
-              </p>
-            )}
-            <Textarea
-              value={transcript}
-              onChange={(e) => setTranscript(e.target.value)}
-              rows={6}
-              placeholder={noTranscript ? "Pegá el transcript del video acá…" : undefined}
-              className="font-mono text-sm"
+
+            <ContentBox
+              label="Descripción"
+              found={descriptionFound}
+              value={description}
+              onChange={setDescription}
+              placeholder="Sin descripción"
+              rows={3}
             />
+
+            <ContentBox
+              label="Subtítulos"
+              found={captionsFound}
+              value={captions}
+              onChange={setCaptions}
+              placeholder="Pegá el transcript manualmente acá…"
+              hint={!captionsFound ? 'En YouTube: abrí el video → tres puntos "..." → "Mostrar transcript", copiá el texto y pegalo acá.' : undefined}
+            />
+
+            <ContentBox
+              label="Audio"
+              found={audioFound}
+              notFoundLabel="No disponible"
+              value={audioTranscript}
+              onChange={setAudioTranscript}
+              placeholder="Transcripción del audio…"
+              extra={
+                !audioFound && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={audioInputRef}
+                      type="file"
+                      accept={WHISPER_ACCEPT}
+                      className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadAudio(f) }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => audioInputRef.current?.click()}
+                      disabled={uploadingAudio}
+                    >
+                      {uploadingAudio ? "Transcribiendo…" : "Subir audio →"}
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      Extraé el audio del video con una herramienta externa y subilo acá
+                    </span>
+                  </div>
+                )
+              }
+            />
+
             {step === "transcript" && (
-              <Button onClick={handleExtract} disabled={extracting || !transcript.trim()}>
+              <Button onClick={handleExtract} disabled={extracting || !hasAnyContent}>
                 {extracting ? "Extrayendo receta…" : "Extraer receta →"}
               </Button>
             )}
