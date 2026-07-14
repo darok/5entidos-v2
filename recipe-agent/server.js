@@ -1,8 +1,16 @@
 import express from 'express'
 import cors from 'cors'
 import { randomUUID } from 'node:crypto'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { runAgent } from './agent.js'
 import { pendingResponses } from './tools.js'
+import { extractVideoId, getYtCaptions, getVideoMetadata, EXTRACTOR_ARGS } from './youtube.js'
+
+const execFileAsync = promisify(execFile)
 
 const app = express()
 // Reflect all origins — SSE is read-only and jobIds are unguessable UUIDs
@@ -25,69 +33,57 @@ function emitToJob(jobId, data) {
   if (data.type === 'error') job.status = 'error'
 }
 
-// ── YouTube caption fetcher ────────────────────────────────────────
+// ── YouTube audio fallback ─────────────────────────────────────────
 
-// YouTube blocks Render's IP with 429 + captcha when we fetch directly.
-// Invidious (open-source YouTube frontend) has its own server IPs and a
-// captions API — we route through it to avoid the block.
-const INVIDIOUS_INSTANCES = [
-  'https://inv.nadeko.net',
-  'https://invidious.fdn.fr',
-  'https://yt.cdaut.de',
-  'https://invidious.privacydev.net',
-]
+// Downloads audio via yt-dlp, transcribes with Whisper. Returns text or null.
+async function getYtAudioTranscript(videoId) {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) { console.error('[yt] OPENAI_API_KEY not set on Render — audio transcription unavailable'); return null }
 
-// Parses a WebVTT string into a clean plain-text string.
-function parseVtt(vtt) {
-  return vtt
-    .split('\n')
-    .filter(line => {
-      const t = line.trim()
-      if (!t) return false
-      if (t === 'WEBVTT') return false
-      if (t.startsWith('NOTE') || t.startsWith('STYLE')) return false
-      if (/^\d{2}:\d{2}/.test(t)) return false  // timestamp line
-      if (/^\d+$/.test(t)) return false           // cue index
-      return true
-    })
-    .map(line => line.replace(/<[^>]+>/g, '').trim())  // strip VTT inline tags
-    .filter(Boolean)
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
+  const dir = await mkdtemp(join(tmpdir(), 'recipe-ytaudio-'))
+  try {
+    // Download smallest available audio stream
+    await execFileAsync('yt-dlp', [
+      '-x', '--audio-format', 'mp3', '--audio-quality', '5',
+      '--no-warnings',
+      '--extractor-args', EXTRACTOR_ARGS,
+      '--output', join(dir, 'audio.%(ext)s'),
+      `https://www.youtube.com/watch?v=${videoId}`,
+    ], { timeout: 120_000 })
 
-async function fetchYouTubeCaptions(videoId) {
-  for (const instance of INVIDIOUS_INSTANCES) {
-    try {
-      console.log(`[yt] trying ${instance}`)
-      const listRes = await fetch(`${instance}/api/v1/captions/${videoId}`, {
-        signal: AbortSignal.timeout(8_000),
-      })
-      if (!listRes.ok) { console.log(`[yt] ${instance} list → ${listRes.status}`); continue }
+    const files = await readdir(dir)
+    const audioFile = files.find(f => /\.(mp3|m4a|ogg|webm|wav)$/.test(f))
+    if (!audioFile) { console.log('[yt] yt-dlp: no audio file produced'); return null }
 
-      const { captions = [] } = await listRes.json()
-      console.log(`[yt] ${instance} → ${captions.length} track(s):`, captions.map(c => c.language_code))
-      if (!captions.length) continue
-
-      // Prefer Spanish; fall back to first available
-      const track = captions.find(c => c.language_code?.startsWith('es')) ?? captions[0]
-      const vttUrl = track.url.startsWith('http') ? track.url : `${instance}${track.url}`
-
-      const vttRes = await fetch(vttUrl, { signal: AbortSignal.timeout(10_000) })
-      if (!vttRes.ok) { console.log(`[yt] vtt fetch → ${vttRes.status}`); continue }
-
-      const text = parseVtt(await vttRes.text())
-      if (text) {
-        console.log(`[yt] got ${text.length} chars via ${instance}`)
-        return text
-      }
-      console.log(`[yt] ${instance} returned empty VTT`)
-    } catch (err) {
-      console.log(`[yt] ${instance} error: ${err.message}`)
+    const buffer = await readFile(join(dir, audioFile))
+    if (buffer.length > 24 * 1024 * 1024) {
+      console.error(`[yt] audio too large for Whisper: ${(buffer.length / 1e6).toFixed(1)} MB`)
+      return null
     }
+    console.log(`[yt] audio downloaded: ${(buffer.length / 1e6).toFixed(1)} MB, sending to Whisper`)
+
+    const form = new FormData()
+    form.append('file', new Blob([buffer], { type: 'audio/mpeg' }), audioFile)
+    form.append('model', 'whisper-1')
+    form.append('language', 'es')
+
+    const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+      signal: AbortSignal.timeout(120_000),
+    })
+    if (!whisperRes.ok) { console.error('[yt] Whisper error:', whisperRes.status, await whisperRes.text().catch(() => '')); return null }
+
+    const { text } = await whisperRes.json()
+    console.log(`[yt] Whisper transcript: ${text?.length ?? 0} chars`)
+    return text || null
+  } catch (err) {
+    console.error('[yt] audio transcription error:', err.message?.slice(0, 300))
+    return null
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {})
   }
-  return null  // no captions available — caller will surface this to the user
 }
 
 // ── Endpoints ─────────────────────────────────────────────────────
@@ -141,44 +137,49 @@ app.post('/recipe/respond/:jobId', (req, res) => {
   res.json({ ok: true })
 })
 
-// Proxy endpoint for Vercel: fetches YouTube captions + title from Render's non-blocked IPs.
-// Does NOT call stripNonRecipeContent — the raw transcript goes straight to the extract endpoint.
-app.post('/youtube/transcript', async (req, res) => {
+// Runs metadata + captions/audio fetching in the background, emitting progress
+// events. Metadata (Data API/oEmbed) and the caption/audio chain run in parallel
+// since they're independent — no reason to make one wait on the other.
+async function runYoutubeImport(videoId, emit) {
+  emit({ type: 'status', text: 'Buscando metadatos y subtítulos…' })
+
+  const [metadata, { transcript, source }] = await Promise.all([
+    getVideoMetadata(videoId),
+    (async () => {
+      // Does NOT call stripNonRecipeContent — the raw transcript goes straight to the extract endpoint.
+      const captions = await getYtCaptions(videoId)
+      if (captions) return { transcript: captions, source: 'subtitles' }
+
+      emit({ type: 'status', text: 'Sin subtítulos, transcribiendo audio…' })
+      const audio = await getYtAudioTranscript(videoId)
+      return { transcript: audio, source: audio ? 'audio' : null }
+    })(),
+  ])
+
+  console.log(`[yt] done: title=${!!metadata.title} description=${!!metadata.description} transcript=${!!transcript} source=${source}`)
+  emit({ type: 'done', title: metadata.title, description: metadata.description, transcript, source })
+}
+
+// Starts a YouTube import job. Returns jobId immediately; work runs in the background
+// and streams via the existing /recipe/stream/:jobId SSE endpoint (jobs are keyed
+// generically by jobId, so no separate stream route is needed).
+app.post('/youtube/start', (req, res) => {
   const { url } = req.body
   if (!url?.trim()) return res.status(400).json({ error: 'URL requerida' })
 
-  try {
-    // Extract video ID (handles watch, youtu.be, shorts)
-    let videoId = null
-    try {
-      const parsed = new URL(url)
-      if (parsed.hostname === 'youtu.be') {
-        videoId = parsed.pathname.slice(1).split('?')[0] || null
-      } else if (parsed.searchParams.has('v')) {
-        videoId = parsed.searchParams.get('v')
-      } else {
-        const m = parsed.pathname.match(/\/shorts\/([^/?]+)/)
-        if (m) videoId = m[1]
-      }
-    } catch { /* invalid URL */ }
+  const videoId = extractVideoId(url)
+  if (!videoId) return res.status(400).json({ error: 'URL de YouTube inválida' })
 
-    if (!videoId) return res.status(400).json({ error: 'URL de YouTube inválida' })
+  const jobId = randomUUID()
+  jobs.set(jobId, { status: 'running', events: [], sseRes: null })
 
-    // Title via oEmbed (reliable public API)
-    let title = null
-    try {
-      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`)
-      if (oembedRes.ok) { const data = await oembedRes.json(); title = data.title ?? null }
-    } catch { /* title stays null */ }
+  const emit = (data) => emitToJob(jobId, data)
 
-    // Raw captions via Invidious proxy (avoids Render's YouTube IP block)
-    const transcript = await fetchYouTubeCaptions(videoId)
+  runYoutubeImport(videoId, emit).catch((err) => {
+    emit({ type: 'error', message: err.message })
+  })
 
-    console.log(`[yt] final: title=${!!title} transcript=${!!transcript}`)
-    res.json({ title, transcript })
-  } catch (err) {
-    res.status(500).json({ error: err.message })
-  }
+  res.json({ jobId })
 })
 
 // ── Start ─────────────────────────────────────────────────────────

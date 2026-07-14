@@ -3,8 +3,8 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import got from 'got'
 import * as cheerio from 'cheerio'
-import { YoutubeTranscript } from 'youtube-transcript'
 import { critiqueDraft, reviewPreferences, stripNonRecipeContent } from './subagents.js'
+import { getYtCaptions } from './youtube.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -52,18 +52,15 @@ export async function fetchUrl(url) {
   return stripNonRecipeContent(raw)
 }
 
-// Fetches spoken transcript from a YouTube video URL. Returns error string if unavailable.
+// Fetches spoken transcript from a YouTube video URL via yt-dlp. Returns error string if unavailable.
 export async function fetchYoutubeTranscript(url) {
-  const videoId = new URL(url).searchParams.get('v')
+  let videoId
+  try { videoId = new URL(url).searchParams.get('v') } catch { /* invalid URL */ }
   if (!videoId) return `URL de YouTube inválida: ${url}`
-  try {
-    const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'es' })
-      .catch(() => YoutubeTranscript.fetchTranscript(videoId))
-    const raw = transcript.map(t => t.text).join(' ').replace(/\s+/g, ' ').trim().slice(0, 6000)
-    return stripNonRecipeContent(raw)
-  } catch (err) {
-    return `Transcripción no disponible para este video: ${err.message}`
-  }
+
+  const raw = await getYtCaptions(videoId)
+  if (!raw) return 'Este video no tiene subtítulos disponibles.'
+  return stripNonRecipeContent(raw.slice(0, 8000))
 }
 
 // ── Interaction tools ─────────────────────────────────────────────

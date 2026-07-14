@@ -37,3 +37,6 @@ next-env.d.ts
 
 # working folder — design sources and non-app files
 /working folder/
+
+# yt-dlp debug dumps (leaked into repo root during local YouTube debugging)
+*-player-script.js

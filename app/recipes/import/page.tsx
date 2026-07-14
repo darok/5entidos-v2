@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,29 +26,83 @@ function YouTubeTab() {
   const [source, setSource] = useState<"subtitles" | "audio" | null>(null)
   const [extracted, setExtracted] = useState<ExtractedRecipe | null>(null)
   const [fetching, setFetching] = useState(false)
+  const [statusText, setStatusText] = useState("")
   const [extracting, setExtracting] = useState(false)
   const [noTranscript, setNoTranscript] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const esRef = useRef<EventSource | null>(null)
 
+  const closeStream = useCallback(() => {
+    esRef.current?.close()
+    esRef.current = null
+  }, [])
+
+  // Starts a background import job on the agent server and streams progress via SSE.
+  // This avoids racing a fixed timeout — the captions→audio→Whisper fallback chain
+  // can take as long as it needs instead of failing on a Vercel function deadline.
   async function handleFetchTranscript() {
     setError(null)
     setNoTranscript(false)
     setFetching(true)
+    setStatusText("Conectando…")
+
+    const wakeupTimer = setTimeout(() => {
+      setStatusText("El servidor está iniciando (puede tardar hasta 30s)…")
+    }, 9000)
+
     try {
-      const res = await fetch("/api/ai/import/youtube", {
+      const res = await fetch("/api/ai/import/youtube/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       })
+      clearTimeout(wakeupTimer)
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "Error al obtener contenido del video")
-      setTranscript(data.transcript ?? "")
-      setSource(data.source ?? null)
-      setNoTranscript(!data.hasTranscript)
-      setStep("transcript")
+      if (!res.ok) throw new Error(data.error ?? "Error al iniciar la importación")
+
+      const es = new EventSource(data.streamUrl)
+      esRef.current = es
+
+      es.onmessage = (e) => {
+        let event: Record<string, unknown>
+        try { event = JSON.parse(e.data) } catch { return }
+
+        switch (event.type) {
+          case "status":
+            setStatusText(event.text as string)
+            break
+          case "done": {
+            closeStream()
+            const title = event.title as string | null
+            const description = event.description as string | null
+            const spoken = event.transcript as string | null
+            const parts: string[] = []
+            if (title) parts.push(`Título del video: ${title}`)
+            if (description) parts.push(`Descripción del video:\n${description}`)
+            if (spoken) parts.push(`Contenido hablado:\n${spoken}`)
+            setTranscript(parts.join("\n\n"))
+            setSource((event.source as "subtitles" | "audio" | null) ?? null)
+            setNoTranscript(!spoken)
+            setStep("transcript")
+            setFetching(false)
+            break
+          }
+          case "error":
+            setError((event.message as string) || "Error al obtener contenido del video")
+            setFetching(false)
+            closeStream()
+            break
+        }
+      }
+
+      es.onerror = () => {
+        setError("Se perdió la conexión con el servidor")
+        setFetching(false)
+        closeStream()
+      }
     } catch (err) {
+      clearTimeout(wakeupTimer)
       setError(err instanceof Error ? err.message : "Error desconocido")
-    } finally {
       setFetching(false)
     }
   }
@@ -95,7 +149,7 @@ function YouTubeTab() {
             onKeyDown={(e) => { if (e.key === "Enter" && url.trim()) handleFetchTranscript() }}
           />
           <Button onClick={handleFetchTranscript} disabled={fetching || !url.trim()}>
-            {fetching ? "Procesando video…" : "Obtener contenido →"}
+            {fetching ? statusText || "Procesando…" : "Obtener contenido →"}
           </Button>
         </div>
       </section>
@@ -115,14 +169,14 @@ function YouTubeTab() {
               </div>
               <button
                 className="text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => { setStep("input"); setExtracted(null); setSource(null); setNoTranscript(false) }}
+                onClick={() => { closeStream(); setStep("input"); setExtracted(null); setSource(null); setNoTranscript(false) }}
               >
                 ← Cambiar video
               </button>
             </div>
             {noTranscript && (
               <p className="text-sm text-amber-600 dark:text-amber-400">
-                No encontramos subtítulos automáticos para este video. Podés pegar el transcript manualmente: en YouTube, abrí el video → tres puntos "..." → "Mostrar transcript", copiá el texto y pegalo acá.
+                No encontramos subtítulos automáticos para este video. Podés pegar el transcript manualmente: en YouTube, abrí el video → tres puntos &quot;...&quot; → &quot;Mostrar transcript&quot;, copiá el texto y pegalo acá.
               </p>
             )}
             <Textarea
