@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { RECIPE_IMAGES_BUCKET, pathFromImageUrl } from "@/lib/storage"
 
 // Converts a recipe title to a safe filename base: "Risotto de Hongos" → "risotto_de_hongos"
 function slugify(title: string): string {
@@ -21,11 +22,9 @@ function buildFilename(ext: string, nameHint?: string | null): string {
 // Deletes an old Storage file given its public URL — runs after successful upload only
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function deleteOldFile(supabase: any, publicUrl: string): Promise<void> {
-  const marker = "/object/public/recipe-images/"
-  const idx = publicUrl.indexOf(marker)
-  if (idx === -1) return
-  const path = decodeURIComponent(publicUrl.slice(idx + marker.length))
-  const { error } = await supabase.storage.from("recipe-images").remove([path])
+  const path = pathFromImageUrl(publicUrl)
+  if (!path) return
+  const { error } = await supabase.storage.from(RECIPE_IMAGES_BUCKET).remove([path])
   if (error) console.error("Failed to delete old file:", error.message)
 }
 
@@ -48,12 +47,12 @@ export async function POST(request: NextRequest) {
       const filename = buildFilename(ext, nameHint)
 
       const { error } = await supabase.storage
-        .from("recipe-images")
+        .from(RECIPE_IMAGES_BUCKET)
         .upload(filename, file, { contentType: file.type, upsert: false })
 
       if (error) throw new Error(error.message)
 
-      const { data: { publicUrl } } = supabase.storage.from("recipe-images").getPublicUrl(filename)
+      const { data: { publicUrl } } = supabase.storage.from(RECIPE_IMAGES_BUCKET).getPublicUrl(filename)
       if (replaces?.trim()) await deleteOldFile(supabase, replaces)
       return NextResponse.json({ url: publicUrl })
     } else {
@@ -70,12 +69,12 @@ export async function POST(request: NextRequest) {
       const buffer = await fetched.arrayBuffer()
 
       const { error: uploadError } = await supabase.storage
-        .from("recipe-images")
+        .from(RECIPE_IMAGES_BUCKET)
         .upload(filename, buffer, { contentType: mimeType })
 
       if (uploadError) throw new Error(uploadError.message)
 
-      const { data: { publicUrl } } = supabase.storage.from("recipe-images").getPublicUrl(filename)
+      const { data: { publicUrl } } = supabase.storage.from(RECIPE_IMAGES_BUCKET).getPublicUrl(filename)
       if (replaces?.trim()) await deleteOldFile(supabase, replaces)
       return NextResponse.json({ url: publicUrl })
     }

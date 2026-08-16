@@ -15,17 +15,25 @@ export async function getAll(): Promise<Recipe[]> {
   return data as Recipe[]
 }
 
+const FULL_RECIPE_SELECT = `
+  *,
+  recipe_ingredients(*, ingredients(name), units(name, abbreviation)),
+  recipe_steps(*),
+  recipe_tags(tag_id, tags(*))
+`
+
+// Supabase returns join results under the table name; remap to match the Recipe type
+function _toRecipe(row: Record<string, unknown>): Recipe {
+  const { recipe_ingredients, recipe_steps, ...rest } = row
+  return { ...rest, ingredients: recipe_ingredients, steps: recipe_steps } as Recipe
+}
+
 // Returns a single recipe with full detail: ingredients, steps, tags
 export async function getById(id: string): Promise<Recipe | null> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from("recipes")
-    .select(`
-      *,
-      recipe_ingredients(*, ingredients(name), units(name, abbreviation)),
-      recipe_steps(*),
-      recipe_tags(tag_id, tags(*))
-    `)
+    .select(FULL_RECIPE_SELECT)
     .eq("id", id)
     .order("step_number", { referencedTable: "recipe_steps", ascending: true })
     .single()
@@ -35,9 +43,20 @@ export async function getById(id: string): Promise<Recipe | null> {
     throw new Error(`getById recipe failed: ${error.message}`)
   }
 
-  // Supabase returns join results under the table name; remap to match the Recipe type
-  const { recipe_ingredients, recipe_steps, ...rest } = data as Record<string, unknown>
-  return { ...rest, ingredients: recipe_ingredients, steps: recipe_steps } as Recipe
+  return _toRecipe(data as Record<string, unknown>)
+}
+
+// Returns every recipe with full detail — used by the export feature
+export async function getAllForExport(): Promise<Recipe[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from("recipes")
+    .select(FULL_RECIPE_SELECT)
+    .order("created_at", { ascending: false })
+    .order("step_number", { referencedTable: "recipe_steps", ascending: true })
+
+  if (error) throw new Error(`getAllForExport recipes failed: ${error.message}`)
+  return (data as Record<string, unknown>[]).map(_toRecipe)
 }
 
 // ── Write ────────────────────────────────────────────────────────

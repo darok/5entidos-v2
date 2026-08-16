@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { RECIPE_IMAGES_BUCKET, pathFromImageUrl } from "@/lib/storage"
 
 export const maxDuration = 60
 
-const BUCKET = "recipe-images"
-const MARKER = `/object/public/${BUCKET}/`
+const BUCKET = RECIPE_IMAGES_BUCKET
 
 function slugify(title: string): string {
   return title
@@ -14,12 +14,6 @@ function slugify(title: string): string {
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 60) || "receta"
-}
-
-function pathFromUrl(publicUrl: string): string | null {
-  const idx = publicUrl.indexOf(MARKER)
-  if (idx === -1) return null
-  return decodeURIComponent(publicUrl.slice(idx + MARKER.length))
 }
 
 function extFromPath(p: string): string {
@@ -48,7 +42,7 @@ export async function GET() {
 
   const items: RenameItem[] = []
   for (const r of recipes ?? []) {
-    const oldPath = pathFromUrl(r.image_url)
+    const oldPath = pathFromImageUrl(r.image_url)
     if (!oldPath) continue // external URL, skip
     const ext = extFromPath(oldPath)
     const rand = Math.floor(Math.random() * 900000 + 100000)

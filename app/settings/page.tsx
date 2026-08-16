@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter,
@@ -605,6 +607,10 @@ function OtrosTab() {
   const [renameError, setRenameError] = useState<string | null>(null)
   const [renameConfirm, setRenameConfirm] = useState(false)
 
+  // export state
+  const [exportIncludeImages, setExportIncludeImages] = useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
+
   async function handleCleanCheck() {
     setCleanLoading(true)
     setCleanError(null)
@@ -676,6 +682,18 @@ function OtrosTab() {
     } finally {
       setRenameRunning(false)
     }
+  }
+
+  function handleExport() {
+    setExportLoading(true)
+    const now = new Date()
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const filename = `5entidos-recetario-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`
+    const params = new URLSearchParams({ filename })
+    if (exportIncludeImages) params.set("images", "1")
+    window.location.href = `/api/recipes/export?${params.toString()}`
+    // native download navigation gives no completion signal — clear the loading state shortly after
+    setTimeout(() => setExportLoading(false), 1500)
   }
 
   return (
@@ -795,6 +813,35 @@ function OtrosTab() {
             )}
           </div>
         )}
+      </div>
+
+      <div className="border-t" />
+
+      {/* ── Exportar recetario ── */}
+      <div className="space-y-3">
+        <h3 className="font-semibold">Exportar recetario</h3>
+        <p className="text-sm text-muted-foreground">
+          Descarga todas las recetas en un archivo. Incluye ingredientes, pasos y etiquetas.
+        </p>
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="export-include-images"
+            checked={exportIncludeImages}
+            onCheckedChange={(checked) => setExportIncludeImages(!!checked)}
+          />
+          <Label htmlFor="export-include-images" className="text-sm font-normal">
+            Incluir imágenes
+          </Label>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleExport}
+          disabled={exportLoading}
+        >
+          {exportLoading ? "Generando…" : "Descargar recetario"}
+        </Button>
       </div>
 
       {/* Rename confirm dialog */}
