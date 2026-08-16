@@ -15,3 +15,10 @@
   - `GET` → dry run, returns list of orphaned files
   - `DELETE` → removes orphaned files from `recipe-images` bucket
 - Improved assemblePrompt anti-artificial directive for photo-realism
+
+## 2026-08-15
+
+- Recovered the repo after local data loss (cloned from GitHub — tracked files were intact; `.env.local`, `recipe-agent/.env`, and `/working folder/` were not, since they're gitignored). Keys still need to be re-entered by hand or via `vercel env pull`; `/working folder/` is unrecoverable (no backup existed).
+- Synced `package-lock.json` (root and `recipe-agent/`) with `package.json`, dropping a stale `youtube-transcript` entry left over from before the Docker/yt-dlp rebuild of YouTube import.
+- Added recipebook export feature to Settings → Otros: owner-only download of every recipe (full detail) as `.json`, or as a `.zip` with an `images/` folder when "Incluir imágenes" is checked. New route `app/api/recipes/export/route.ts`, new `lib/db/recipes.ts:getAllForExport()`, new dependency `jszip`.
+- Added `lib/storage.ts` (`RECIPE_IMAGES_BUCKET`, `pathFromImageUrl`) and refactored `app/api/upload/route.ts` and `app/api/admin/rename-images/route.ts` to use it instead of each keeping its own duplicate of the Storage-path-from-URL logic.
