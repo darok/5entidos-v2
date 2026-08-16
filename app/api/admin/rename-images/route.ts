@@ -20,6 +20,14 @@ function extFromPath(p: string): string {
   return p.split(".").pop() ?? "jpg"
 }
 
+// True if the path already matches "<slugified-title>_XXXXXX.ext"
+function matchesConvention(path: string, base: string, ext: string): boolean {
+  const prefix = `${base}_`
+  if (!path.startsWith(prefix) || !path.endsWith(`.${ext}`)) return false
+  const rand = path.slice(prefix.length, path.length - ext.length - 1)
+  return /^\d{6}$/.test(rand)
+}
+
 interface RenameItem {
   recipe_id: string
   title: string
@@ -45,9 +53,10 @@ export async function GET() {
     const oldPath = pathFromImageUrl(r.image_url)
     if (!oldPath) continue // external URL, skip
     const ext = extFromPath(oldPath)
+    const base = slugify(r.title)
+    if (matchesConvention(oldPath, base, ext)) continue // already follows the convention
     const rand = Math.floor(Math.random() * 900000 + 100000)
-    const newPath = `${slugify(r.title)}_${rand}.${ext}`
-    if (oldPath === newPath) continue
+    const newPath = `${base}_${rand}.${ext}`
     items.push({ recipe_id: r.id, title: r.title, old_path: oldPath, new_path: newPath })
   }
 
