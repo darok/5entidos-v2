@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import OpenAI from "openai"
 import { extractRecipeFromText } from "@/lib/ai/extract"
+import { getAll as getAllUnits } from "@/lib/db/units"
 
 export async function POST(request: NextRequest) {
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -15,7 +16,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Transcript required" }, { status: 400 })
     }
 
-    const extracted = await extractRecipeFromText(transcript, openai)
+    const units = await getAllUnits()
+    const extracted = await extractRecipeFromText(transcript, openai, units)
     return NextResponse.json(extracted)
   } catch (error) {
     console.error(error)
