@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { RecipeForm, type RecipeFormData } from "@/components/recipe-form"
 import { useAudioRecipeStore } from "@/lib/stores/audio-recipe"
+import { capitalize } from "@/lib/utils"
 import type { Tag, Ingredient, Unit } from "@/types"
 
 // Fetches catalog data on mount and pre-fills from audio store if available
@@ -50,7 +51,7 @@ export default function NewRecipePage() {
             )
             return {
               ingredient_id: match?.id ?? "",
-              ingredient_name: ing.name,
+              ingredient_name: match ? match.name : capitalize(ing.name),
               quantity: ing.quantity != null ? String(ing.quantity) : "",
               unit_id: unitMatch?.id ?? "",
               optional: false,

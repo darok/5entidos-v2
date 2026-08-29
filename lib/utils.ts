@@ -12,6 +12,11 @@ export function scaleQuantity(quantity: number | null, scale: number): number | 
   return quantity * scale
 }
 
+// Capitalizes the first letter, leaving the rest untouched
+export function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
 // Format minutes into a human-readable string like "1h 30m"
 export function formatTime(minutes: number | null): string {
   if (minutes === null || minutes <= 0) return "—"
