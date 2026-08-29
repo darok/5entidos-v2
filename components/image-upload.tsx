@@ -71,6 +71,8 @@ export function ImageUpload({ value, onChange, searchHint, recipeIngredients }: 
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null)
   const [cropDirty, setCropDirty] = useState(false)
   const [cropSaving, setCropSaving] = useState(false)
+  const [cropError, setCropError] = useState(false)
+  const [cropRetryKey, setCropRetryKey] = useState(0)
 
   // Called when any source resolves to a Supabase URL — opens crop step
   function handleImageReady(supabaseUrl: string) {
@@ -80,6 +82,15 @@ export function ImageUpload({ value, onChange, searchHint, recipeIngredients }: 
     setZoom(1)
     setCropDirty(false)
     setCroppedAreaPixels(null)
+    setCropError(false)
+    setCropRetryKey(0)
+  }
+
+  // The freshly-uploaded image sometimes fails to load on the first attempt
+  // (e.g. a transient Storage propagation delay) — retry once silently, then show an error
+  function handleCropImageError() {
+    if (cropRetryKey < 1) setCropRetryKey((k) => k + 1)
+    else setCropError(true)
   }
 
   const onCropComplete = useCallback((_: Area, pixels: Area) => {
@@ -222,15 +233,31 @@ export function ImageUpload({ value, onChange, searchHint, recipeIngredients }: 
           className="relative w-full aspect-video overflow-hidden rounded-md bg-black"
           onPointerDown={() => setCropDirty(true)}
         >
-          <Cropper
-            image={cropSrc}
-            crop={crop}
-            zoom={zoom}
-            aspect={16 / 9}
-            onCropChange={setCrop}
-            onZoomChange={setZoom}
-            onCropComplete={onCropComplete}
-          />
+          {cropError ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-white/80">
+              <p>No se pudo cargar la imagen.</p>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => { setCropError(false); setCropRetryKey(0) }}
+              >
+                Reintentar
+              </Button>
+            </div>
+          ) : (
+            <Cropper
+              key={`${cropSrc}-${cropRetryKey}`}
+              image={cropSrc}
+              crop={crop}
+              zoom={zoom}
+              aspect={16 / 9}
+              onCropChange={setCrop}
+              onZoomChange={setZoom}
+              onCropComplete={onCropComplete}
+              mediaProps={{ onError: handleCropImageError }}
+            />
+          )}
         </div>
         <div className="flex items-center gap-3 px-1">
           <span className="text-xs text-muted-foreground shrink-0">Zoom</span>
