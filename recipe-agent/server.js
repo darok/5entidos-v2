@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { runAgent } from './agent.js'
 import { pendingResponses } from './tools.js'
 import { extractVideoId, getYtCaptions, getVideoMetadata, EXTRACTOR_ARGS } from './youtube.js'
+import { isInstagramUrl, getInstagramCaption } from './instagram.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -108,6 +109,42 @@ async function getYtAudioTranscript(videoId) {
   }
 }
 
+// ── Instagram audio ──────────────────────────────────────────────
+
+// Downloads a reel's audio via yt-dlp, transcribes with Whisper. Returns text or null.
+// No EXTRACTOR_ARGS spoofing here — that's a YouTube-specific anti-throttling trick.
+async function getInstagramAudioTranscript(url) {
+  if (!process.env.OPENAI_API_KEY) { console.error('[ig] OPENAI_API_KEY not set on Render — audio transcription unavailable'); return null }
+
+  const dir = await mkdtemp(join(tmpdir(), 'recipe-igaudio-'))
+  try {
+    await execFileAsync('yt-dlp', [
+      '-x', '--audio-format', 'mp3', '--audio-quality', '5',
+      '--no-warnings',
+      '--output', join(dir, 'audio.%(ext)s'),
+      url,
+    ], { timeout: 120_000 })
+
+    const files = await readdir(dir)
+    const audioFile = files.find(f => /\.(mp3|m4a|ogg|webm|wav)$/.test(f))
+    if (!audioFile) { console.log('[ig] yt-dlp: no audio file produced'); return null }
+
+    const buffer = await readFile(join(dir, audioFile))
+    if (buffer.length > 24 * 1024 * 1024) {
+      console.error(`[ig] audio too large for Whisper: ${(buffer.length / 1e6).toFixed(1)} MB`)
+      return null
+    }
+    console.log(`[ig] audio downloaded: ${(buffer.length / 1e6).toFixed(1)} MB, sending to Whisper`)
+
+    return await transcribeWithWhisper(buffer, audioFile, 'audio/mpeg')
+  } catch (err) {
+    console.error('[ig] audio transcription error:', err.message?.slice(0, 300))
+    return null
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
 // ── Endpoints ─────────────────────────────────────────────────────
 
 // Start a new recipe research job. Returns jobId immediately; agent runs in background.
@@ -198,6 +235,41 @@ app.post('/youtube/start', (req, res) => {
   const emit = (data) => emitToJob(jobId, data)
 
   runYoutubeImport(videoId, emit).catch((err) => {
+    emit({ type: 'error', message: err.message })
+  })
+
+  res.json({ jobId })
+})
+
+// Runs caption + audio fetching in the background, emitting progress events. Both
+// run in parallel since they're independent — Instagram has no closed-captions track
+// like YouTube, so unlike runYoutubeImport there's no fallback chain, just two sources.
+async function runInstagramImport(url, emit) {
+  emit({ type: 'status', text: 'Buscando caption y transcribiendo audio…' })
+
+  const [caption, transcript] = await Promise.all([
+    getInstagramCaption(url),
+    getInstagramAudioTranscript(url),
+  ])
+
+  console.log(`[ig] done: caption=${!!caption} transcript=${!!transcript}`)
+  emit({ type: 'done', caption, transcript })
+}
+
+// Starts an Instagram import job. Returns jobId immediately; work runs in the background
+// and streams via the existing /recipe/stream/:jobId SSE endpoint (jobs are keyed
+// generically by jobId, so no separate stream route is needed).
+app.post('/instagram/start', (req, res) => {
+  const { url } = req.body
+  if (!url?.trim()) return res.status(400).json({ error: 'URL requerida' })
+  if (!isInstagramUrl(url)) return res.status(400).json({ error: 'URL de Instagram inválida' })
+
+  const jobId = randomUUID()
+  jobs.set(jobId, { status: 'running', events: [], sseRes: null })
+
+  const emit = (data) => emitToJob(jobId, data)
+
+  runInstagramImport(url, emit).catch((err) => {
     emit({ type: 'error', message: err.message })
   })
 

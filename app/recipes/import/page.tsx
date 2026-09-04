@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Upload, Captions, Link as LinkIcon, Image as ImageIcon, X } from "lucide-react"
+import { Upload, Captions, Link as LinkIcon, Image as ImageIcon, Clapperboard, X } from "lucide-react"
 import { ExtractedRecipePreview } from "@/components/extracted-recipe-preview"
 import { useAudioRecipeStore } from "@/lib/stores/audio-recipe"
 import type { ExtractedRecipe } from "@/types"
@@ -369,6 +369,291 @@ function YouTubeTab() {
   )
 }
 
+// ── Instagram tab ─────────────────────────────────────────────────────────────
+
+type InstagramStep = "input" | "content" | "preview"
+
+function InstagramTab() {
+  const router = useRouter()
+  const { setData } = useAudioRecipeStore()
+
+  const [step, setStep] = useState<InstagramStep>("input")
+  const [url, setUrl] = useState("")
+  const [caption, setCaption] = useState("")
+  const [captionFound, setCaptionFound] = useState(false)
+  const [audioTranscript, setAudioTranscript] = useState("")
+  const [audioFound, setAudioFound] = useState(false)
+  const [uploadingAudio, setUploadingAudio] = useState(false)
+  const [agentOrigin, setAgentOrigin] = useState<string | null>(null)
+  const [extracted, setExtracted] = useState<ExtractedRecipe | null>(null)
+  const [fetching, setFetching] = useState(false)
+  const [statusText, setStatusText] = useState("")
+  const [extracting, setExtracting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const esRef = useRef<EventSource | null>(null)
+  const audioInputRef = useRef<HTMLInputElement>(null)
+
+  const closeStream = useCallback(() => {
+    esRef.current?.close()
+    esRef.current = null
+  }, [])
+
+  function resetContent() {
+    setCaption(""); setCaptionFound(false)
+    setAudioTranscript(""); setAudioFound(false)
+  }
+
+  // Starts a background import job on the agent server and streams progress via SSE —
+  // same pattern as YouTube's importer, since yt-dlp + Whisper need as long as they need
+  // instead of racing Vercel's function deadline.
+  async function handleFetchContent() {
+    setError(null)
+    resetContent()
+    setFetching(true)
+    setStatusText("Conectando…")
+
+    const wakeupTimer = setTimeout(() => {
+      setStatusText("El servidor está iniciando (puede tardar hasta 30s)…")
+    }, 9000)
+
+    try {
+      const res = await fetch("/api/ai/import/instagram/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      })
+      clearTimeout(wakeupTimer)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Error al iniciar la importación")
+      setAgentOrigin(new URL(data.streamUrl).origin)
+
+      const es = new EventSource(data.streamUrl)
+      esRef.current = es
+
+      es.onmessage = (e) => {
+        let event: Record<string, unknown>
+        try { event = JSON.parse(e.data) } catch { return }
+
+        switch (event.type) {
+          case "status":
+            setStatusText(event.text as string)
+            break
+          case "done": {
+            closeStream()
+            const cap = (event.caption as string | null) ?? ""
+            setCaption(cap)
+            setCaptionFound(!!cap)
+            const transcript = (event.transcript as string | null) ?? ""
+            setAudioTranscript(transcript)
+            setAudioFound(!!transcript)
+
+            setStep("content")
+            setFetching(false)
+            break
+          }
+          case "error":
+            setError((event.message as string) || "Error al obtener contenido del post")
+            setFetching(false)
+            closeStream()
+            break
+        }
+      }
+
+      es.onerror = () => {
+        setError("Se perdió la conexión con el servidor")
+        setFetching(false)
+        closeStream()
+      }
+    } catch (err) {
+      clearTimeout(wakeupTimer)
+      setError(err instanceof Error ? err.message : "Error desconocido")
+      setFetching(false)
+    }
+  }
+
+  // Manual fallback when automatic audio transcription didn't find anything (Instagram
+  // blocks yt-dlp more often than YouTube does): the user extracts the audio themselves
+  // with an external tool and uploads it here, straight to the Render agent.
+  async function handleUploadAudio(file: File) {
+    setError(null)
+    if (file.size > WHISPER_MAX_SIZE) {
+      setError(`El archivo supera el límite de ${WHISPER_MAX_SIZE / 1e6} MB de Whisper.`)
+      return
+    }
+    if (!agentOrigin) {
+      setError("No se pudo determinar el servidor de transcripción. Volvé a obtener el contenido del post.")
+      return
+    }
+    setUploadingAudio(true)
+    try {
+      const res = await fetch(`${agentOrigin}/whisper/transcribe`, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "audio/mpeg" },
+        body: file,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Error al transcribir el audio")
+      setAudioTranscript(data.transcript ?? "")
+      setAudioFound(!!data.transcript)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error desconocido")
+    } finally {
+      setUploadingAudio(false)
+      if (audioInputRef.current) audioInputRef.current.value = ""
+    }
+  }
+
+  async function handleExtract() {
+    setError(null)
+    setExtracting(true)
+    try {
+      // Spoken content (the actual walkthrough) leads; the caption is supplementary —
+      // ordering nudges the model to treat it that way alongside the explicit prompt instructions.
+      const parts: string[] = []
+      if (audioTranscript.trim()) parts.push(`Transcripción de audio:\n${audioTranscript}`)
+      if (caption.trim()) parts.push(`Caption del post (fuente complementaria, suele traer la lista de ingredientes):\n${caption}`)
+
+      const res = await fetch("/api/ai/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: parts.join("\n\n") }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Error al extraer receta")
+      setExtracted(data)
+      setStep("preview")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error desconocido")
+    } finally {
+      setExtracting(false)
+    }
+  }
+
+  function handleLoadForm() {
+    if (!extracted) return
+    setData(extracted)
+    router.push("/recipes/new")
+  }
+
+  const hasAnyContent = !!(caption.trim() || audioTranscript.trim())
+
+  return (
+    <div className="space-y-6">
+      <section className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Pegá el link de un Reel de Instagram. Se transcribe el audio automáticamente
+          y se busca el caption del post, que suele traer la lista de ingredientes.
+          Algunos posts bloquean la descarga automática — en ese caso podés pegar el caption
+          y subir el audio a mano.
+        </p>
+        <div className="flex gap-2">
+          <Input
+            placeholder="https://www.instagram.com/reels/..."
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            disabled={fetching}
+            onKeyDown={(e) => { if (e.key === "Enter" && url.trim()) handleFetchContent() }}
+          />
+          <Button onClick={handleFetchContent} disabled={fetching || !url.trim()}>
+            {fetching ? statusText || "Procesando…" : "Obtener contenido →"}
+          </Button>
+        </div>
+      </section>
+
+      {(step === "content" || step === "preview") && (
+        <>
+          <Separator />
+          <section className="space-y-5">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold">Contenido del post</h2>
+              <button
+                className="text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => { closeStream(); setStep("input"); setExtracted(null); resetContent() }}
+              >
+                ← Cambiar post
+              </button>
+            </div>
+
+            <ContentBox
+              label="Audio"
+              found={audioFound}
+              notFoundLabel="No disponible"
+              value={audioTranscript}
+              onChange={setAudioTranscript}
+              placeholder="Transcripción del audio…"
+              extra={
+                !audioFound && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={audioInputRef}
+                      type="file"
+                      accept={WHISPER_ACCEPT}
+                      className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadAudio(f) }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => audioInputRef.current?.click()}
+                      disabled={uploadingAudio}
+                    >
+                      {uploadingAudio ? "Transcribiendo…" : "Subir audio →"}
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      Extraé el audio del reel con una herramienta externa y subilo acá
+                    </span>
+                  </div>
+                )
+              }
+            />
+
+            <ContentBox
+              label="Caption"
+              found={captionFound}
+              value={caption}
+              onChange={setCaption}
+              placeholder="Pegá el caption del post manualmente acá…"
+              hint={!captionFound ? "Abrí el post en Instagram, copiá el texto del caption y pegalo acá." : undefined}
+            />
+
+            {step === "content" && (
+              <Button onClick={handleExtract} disabled={extracting || !hasAnyContent}>
+                {extracting ? "Extrayendo receta…" : "Extraer receta →"}
+              </Button>
+            )}
+          </section>
+        </>
+      )}
+
+      {step === "preview" && extracted && (
+        <>
+          <Separator />
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold">Vista previa</h2>
+              <button
+                className="text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setStep("content")}
+              >
+                ← Editar contenido
+              </button>
+            </div>
+            <ExtractedRecipePreview
+              extracted={extracted}
+              onLoadForm={handleLoadForm}
+              onReExtract={handleExtract}
+              reExtracting={extracting}
+            />
+          </section>
+        </>
+      )}
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </div>
+  )
+}
+
 // ── Foto tab ──────────────────────────────────────────────────────────────────
 
 type FotoStep = "input" | "preview"
@@ -658,10 +943,14 @@ export default function ImportPage() {
       <h1 className="text-2xl font-bold">Importar receta</h1>
 
       <Tabs defaultValue="youtube">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="youtube" className="flex items-center gap-1.5">
             <Captions className="h-3.5 w-3.5" />
             YouTube
+          </TabsTrigger>
+          <TabsTrigger value="instagram" className="flex items-center gap-1.5">
+            <Clapperboard className="h-3.5 w-3.5" />
+            Instagram
           </TabsTrigger>
           <TabsTrigger value="foto" className="flex items-center gap-1.5">
             <ImageIcon className="h-3.5 w-3.5" />
@@ -675,6 +964,9 @@ export default function ImportPage() {
 
         <TabsContent value="youtube" className="pt-6">
           <YouTubeTab />
+        </TabsContent>
+        <TabsContent value="instagram" className="pt-6">
+          <InstagramTab />
         </TabsContent>
         <TabsContent value="foto" className="pt-6">
           <FotoTab />
