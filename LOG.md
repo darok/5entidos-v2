@@ -1,3 +1,10 @@
+## 2026-09-04
+
+- Added Instagram Reels as a 4th tab in `/recipes/import`, reusing the YouTube import architecture: `recipe-agent/instagram.js` (URL validation + caption extraction via `yt-dlp --dump-json`), `recipe-agent/server.js` (`/instagram/start` route, audio download + Whisper transcription), `app/api/ai/import/instagram/start/route.ts`, `InstagramTab` in `app/recipes/import/page.tsx`.
+  - No closed-captions equivalent on Instagram — always fetches caption + audio in parallel (no fallback chain like YouTube's captions→audio).
+  - Verified locally against a real reel: yt-dlp pulls the caption (often the full ingredient list) and downloads audio without cookies/login for public posts.
+  - Known risk (not addressed yet): Instagram can block yt-dlp harder than YouTube for some posts; no cookie support configured. Manual fallback (paste caption, upload audio) covers that case for now — revisit if it fails often in practice.
+
 ## 2026-06-21
 
 - Added AI Image Boost feature: `components/ai-image-boost-dialog.tsx`, `app/api/ai/boost-image/route.ts`
