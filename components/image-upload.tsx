@@ -26,7 +26,9 @@ interface ImageUploadProps {
   recipeIngredients?: string[]
 }
 
-// Extract the visible cropped area from an image URL into a Blob
+const CROP_MAX_WIDTH = 1920
+
+// Extract the visible cropped area into a JPEG Blob, downscaled to CROP_MAX_WIDTH so it stays under the upload size limit
 async function getCroppedBlob(src: string, pixels: Area): Promise<Blob> {
   const img = document.createElement("img")
   img.crossOrigin = "anonymous"
@@ -35,15 +37,17 @@ async function getCroppedBlob(src: string, pixels: Area): Promise<Blob> {
     img.onerror = () => rej()
     img.src = src
   })
+  const scale = Math.min(1, CROP_MAX_WIDTH / pixels.width)
   const canvas = document.createElement("canvas")
-  canvas.width = pixels.width
-  canvas.height = pixels.height
+  canvas.width = Math.round(pixels.width * scale)
+  canvas.height = Math.round(pixels.height * scale)
   canvas.getContext("2d")!.drawImage(
     img, pixels.x, pixels.y, pixels.width, pixels.height,
-    0, 0, pixels.width, pixels.height
+    0, 0, canvas.width, canvas.height
   )
+  // JPEG rather than WebP — iOS Safari can't encode WebP and silently falls back to a huge PNG
   return new Promise((res, rej) =>
-    canvas.toBlob((b) => (b ? res(b) : rej("toBlob failed")), "image/webp", 0.95)
+    canvas.toBlob((b) => (b ? res(b) : rej(new Error("toBlob failed"))), "image/jpeg", 0.88)
   )
 }
 
@@ -71,6 +75,7 @@ export function ImageUpload({ value, onChange, searchHint, recipeIngredients }: 
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null)
   const [cropDirty, setCropDirty] = useState(false)
   const [cropSaving, setCropSaving] = useState(false)
+  const [cropSaveError, setCropSaveError] = useState<string | null>(null)
   const [cropError, setCropError] = useState(false)
   const [cropRetryKey, setCropRetryKey] = useState(0)
 
@@ -84,6 +89,7 @@ export function ImageUpload({ value, onChange, searchHint, recipeIngredients }: 
     setCroppedAreaPixels(null)
     setCropError(false)
     setCropRetryKey(0)
+    setCropSaveError(null)
   }
 
   // The freshly-uploaded image sometimes fails to load on the first attempt
@@ -108,22 +114,27 @@ export function ImageUpload({ value, onChange, searchHint, recipeIngredients }: 
       return
     }
 
-    if (!croppedAreaPixels) return
+    if (!croppedAreaPixels) {
+      setCropSaveError("El recorte no está listo todavía, probá de nuevo.")
+      return
+    }
     setCropSaving(true)
+    setCropSaveError(null)
     try {
       const blob = await getCroppedBlob(cropSrc, croppedAreaPixels)
       const formData = new FormData()
       formData.append("file", blob, "crop.jpg")
       if (searchHint) formData.append("name", searchHint)
-      // Delete the pre-crop Supabase file (either the recipe's current image or the just-uploaded one)
-      if (cropPendingUrl) formData.append("replaces", cropPendingUrl)
+      // The pre-crop file is not deleted here — the recipe save removes the old image once it's no longer referenced
       const res = await fetch("/api/upload", { method: "POST", body: formData })
-      const data = await res.json()
-      if (data.url) {
-        onChange(data.url)
-        setCropSrc(null)
-        setActiveTab("upload")
-      }
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.url) throw new Error(data.error ?? `Error ${res.status} al subir el recorte`)
+      onChange(data.url)
+      setCropSrc(null)
+      setActiveTab("upload")
+    } catch (err) {
+      console.error("Crop save failed:", err)
+      setCropSaveError(err instanceof Error ? err.message : "Error al guardar el recorte.")
     } finally {
       setCropSaving(false)
     }
@@ -143,8 +154,6 @@ export function ImageUpload({ value, onChange, searchHint, recipeIngredients }: 
     const formData = new FormData()
     formData.append("file", file)
     if (searchHint) formData.append("name", searchHint)
-    // Delete the existing recipe image when replacing with a new upload
-    if (value) formData.append("replaces", value)
     try {
       const res = await fetch("/api/upload", { method: "POST", body: formData })
       const data = await res.json()
@@ -165,7 +174,7 @@ export function ImageUpload({ value, onChange, searchHint, recipeIngredients }: 
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: urlInput.trim(), ...(searchHint ? { name: searchHint } : {}), ...(value ? { replaces: value } : {}) }),
+        body: JSON.stringify({ url: urlInput.trim(), ...(searchHint ? { name: searchHint } : {}) }),
       })
       const data = await res.json()
       if (data.url) {
@@ -209,7 +218,7 @@ export function ImageUpload({ value, onChange, searchHint, recipeIngredients }: 
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: photo.urls.regular, ...(searchHint ? { name: searchHint } : {}), ...(value ? { replaces: value } : {}) }),
+        body: JSON.stringify({ url: photo.urls.regular, ...(searchHint ? { name: searchHint } : {}) }),
       })
       const data = await res.json()
       if (data.url) {
@@ -276,6 +285,7 @@ export function ImageUpload({ value, onChange, searchHint, recipeIngredients }: 
             Cancelar
           </Button>
         </div>
+        {cropSaveError && <p className="text-sm text-destructive">{cropSaveError}</p>}
       </div>
     )
   }

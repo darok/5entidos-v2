@@ -244,7 +244,6 @@ export function AiImageBoostDialog({
       const blob = await (await fetch(`data:image/png;base64,${resultB64}`)).blob()
       const formData = new FormData()
       formData.append("file", blob, "boost.png")
-      formData.append("replaces", imageUrl)
       if (recipeTitle) formData.append("name", recipeTitle)
       const res = await fetch("/api/upload", { method: "POST", body: formData })
       const data = await res.json()

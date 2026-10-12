@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { RECIPE_IMAGES_BUCKET, pathFromImageUrl } from "@/lib/storage"
 
-const BUCKET = "recipe-images"
-const MARKER = `/object/public/${BUCKET}/`
-
-// Extract the storage path from a full public URL
-function pathFromUrl(publicUrl: string): string | null {
-  const idx = publicUrl.indexOf(MARKER)
-  if (idx === -1) return null
-  return decodeURIComponent(publicUrl.slice(idx + MARKER.length))
-}
+// Files younger than this may belong to an edit that hasn't been saved yet — never treat them as orphans
+const MIN_ORPHAN_AGE_MS = 24 * 60 * 60 * 1000
 
 // GET — dry run: returns { orphaned: string[] }
 // DELETE — deletes orphaned files and returns { deleted: string[]; errors: string[] }
@@ -27,7 +21,7 @@ async function run(request: NextRequest, doDelete: boolean) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   // Fetch all files in bucket
-  const { data: files, error: listError } = await supabase.storage.from(BUCKET).list("", { limit: 1000 })
+  const { data: files, error: listError } = await supabase.storage.from(RECIPE_IMAGES_BUCKET).list("", { limit: 1000 })
   if (listError) return NextResponse.json({ error: listError.message }, { status: 500 })
 
   // Fetch all referenced image_urls from recipes
@@ -37,12 +31,17 @@ async function run(request: NextRequest, doDelete: boolean) {
   const referenced = new Set<string>()
   for (const r of recipes ?? []) {
     if (!r.image_url) continue
-    const p = pathFromUrl(r.image_url)
+    const p = pathFromImageUrl(r.image_url)
     if (p) referenced.add(p)
   }
 
   const allFiles = (files ?? []).map((f) => f.name)
-  const orphaned = allFiles.filter((name) => !referenced.has(name))
+  const cutoff = Date.now() - MIN_ORPHAN_AGE_MS
+  const orphaned = (files ?? [])
+    .filter((f) => f.id !== null) // folders have no id
+    .filter((f) => !referenced.has(f.name))
+    .filter((f) => !f.created_at || new Date(f.created_at).getTime() < cutoff)
+    .map((f) => f.name)
 
   if (!doDelete) {
     return NextResponse.json({ total: allFiles.length, referenced: referenced.size, orphaned })
@@ -53,7 +52,7 @@ async function run(request: NextRequest, doDelete: boolean) {
   const errors: string[] = []
   for (let i = 0; i < orphaned.length; i += 100) {
     const batch = orphaned.slice(i, i + 100)
-    const { error } = await supabase.storage.from(BUCKET).remove(batch)
+    const { error } = await supabase.storage.from(RECIPE_IMAGES_BUCKET).remove(batch)
     if (error) {
       errors.push(error.message)
     } else {

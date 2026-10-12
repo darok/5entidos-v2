@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/server"
+import { RECIPE_IMAGES_BUCKET, pathFromImageUrl } from "@/lib/storage"
 import type { Recipe } from "@/types"
+
+type SupabaseServerClient = ReturnType<typeof createClient>
 
 // ── Read ────────────────────────────────────────────────────────
 
@@ -116,12 +119,18 @@ export async function update(
 ): Promise<void> {
   const supabase = createClient()
 
+  const previousImageUrl = recipe.image_url !== undefined ? await _getImageUrl(supabase, id) : null
+
   const { error: recipeError } = await supabase
     .from("recipes")
     .update(recipe)
     .eq("id", id)
 
   if (recipeError) throw new Error(`update recipe failed: ${recipeError.message}`)
+
+  if (previousImageUrl && previousImageUrl !== recipe.image_url) {
+    await _deleteImageIfUnreferenced(supabase, previousImageUrl)
+  }
 
   // Delete then re-insert — sequential so a failed re-insert is not preceded by all 3 deletes
   await supabase.from("recipe_ingredients").delete().eq("recipe_id", id)
@@ -134,11 +143,40 @@ export async function update(
 // Deletes a recipe; cascade handles related rows
 export async function deleteRecipe(id: string): Promise<void> {
   const supabase = createClient()
+  const imageUrl = await _getImageUrl(supabase, id)
   const { error } = await supabase.from("recipes").delete().eq("id", id)
   if (error) throw new Error(`delete recipe failed: ${error.message}`)
+  if (imageUrl) await _deleteImageIfUnreferenced(supabase, imageUrl)
 }
 
 // ── Internal ─────────────────────────────────────────────────────
+
+// Returns a recipe's current image_url (null if it has none)
+async function _getImageUrl(supabase: SupabaseServerClient, recipeId: string): Promise<string | null> {
+  const { data, error } = await supabase.from("recipes").select("image_url").eq("id", recipeId).single()
+  if (error) throw new Error(`read recipe image failed: ${error.message}`)
+  return data?.image_url ?? null
+}
+
+// Removes a replaced image from Storage, unless it's external or another recipe still uses it.
+// Runs only after a successful save, so an abandoned edit never leaves a recipe pointing at a deleted file.
+async function _deleteImageIfUnreferenced(supabase: SupabaseServerClient, imageUrl: string): Promise<void> {
+  const path = pathFromImageUrl(imageUrl)
+  if (!path) return
+
+  const { count, error: countError } = await supabase
+    .from("recipes")
+    .select("id", { count: "exact", head: true })
+    .eq("image_url", imageUrl)
+  if (countError) {
+    console.error("Skipped deleting replaced image, reference check failed:", countError.message)
+    return
+  }
+  if (count && count > 0) return
+
+  const { error } = await supabase.storage.from(RECIPE_IMAGES_BUCKET).remove([path])
+  if (error) console.error("Failed to delete replaced image:", error.message)
+}
 
 // Inserts related rows after recipe creation or update
 async function _insertRelated(
