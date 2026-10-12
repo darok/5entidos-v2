@@ -36,3 +36,11 @@
 - Fixed audio-import units almost never matching the catalog: `lib/ai/extract.ts`'s `extractRecipeFromText` now takes an optional `units` list and tells GPT to reuse the catalog's exact spelling when one applies; `app/api/ai/extract/route.ts` fetches and passes it. Link/image import routes unchanged (out of scope this round).
 - Fixed the crop editor sometimes rendering as a blank/black box right after uploading a photo: `components/image-upload.tsx` now retries once on image load failure, then shows a visible error + retry button instead of staying silently blank.
 - Investigated (not implemented): sharing an audio file into the app from WhatsApp's share sheet. Android's Web Share Target API would need a service worker first (app isn't an installable PWA yet); Dario has an iPhone, which doesn't support that API at all. Decided against building anything now — an iOS Shortcut (save-to-Files + open `/recipes/audio`) covers the immediate need with zero app code. Backlogged for later: a fuller Shortcut that POSTs straight to a new authenticated intake route for immediate transcription.
+
+## 2026-10-12
+
+- Fixed recipe images going missing (e.g. Shawarma showed iOS's blue "?" on the home list; Storage returned 404 for its file). `/api/upload`'s `replaces` param deleted the old file at upload/crop/boost time, before the recipe was saved — abandoning the edit left `image_url` pointing at a deleted file. Removed `replaces` from `app/api/upload/route.ts`, `components/image-upload.tsx`, `components/ai-image-boost-dialog.tsx`; `lib/db/recipes.ts` `update()`/`deleteRecipe()` now delete the old image only after a successful save, and only if no other recipe references it.
+- Crop step (`components/image-upload.tsx`): exports JPEG 0.88 capped at 1920px wide (was full-res WebP 0.95, which iOS Safari can't encode → PNG fallback that could exceed Vercel's 4.5 MB body limit), and shows upload errors instead of silently doing nothing.
+- `app/api/admin/cleanup-images/route.ts`: reuses `lib/storage.ts`, skips files under 24h old (could be an unsaved edit) and folders. Abandoned uploads/crops now become orphans for this cleanup.
+- Shawarma's original image file is gone — must be re-uploaded by hand.
+- No test framework in the project yet, so the new `lib/db/recipes.ts` image-deletion logic has no tests.
