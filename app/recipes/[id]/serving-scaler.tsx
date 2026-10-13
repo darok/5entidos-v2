@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { scaleQuantity } from "@/lib/utils"
+import { formatQuantity, scaleQuantity } from "@/lib/utils"
 import type { RecipeIngredient } from "@/types"
 
 interface ServingScalerProps {
@@ -43,7 +43,7 @@ export function ServingScaler({ originalServings, ingredients }: ServingScalerPr
       <ul className="space-y-1.5">
         {ingredients.map((ing) => {
           const scaled = scaleQuantity(ing.quantity, scale)
-          const qty = scaled !== null ? (Number.isInteger(scaled) ? scaled : scaled.toFixed(1)) : ""
+          const qty = scaled !== null ? formatQuantity(scaled) : ""
           const unit = ing.units?.abbreviation ?? ""
           const name = ing.ingredients.name
 
