@@ -47,4 +47,4 @@
 
 ## 2026-10-13
 
-- Recipe detail now shows ingredient quantities as fractions when they fit exactly (denominators 2, 3, 4, 5, 10, 20; mixed numbers like "1 1/2"; 0.33/0.67 read as thirds). New `formatQuantity()` in `lib/utils.ts`, used by `app/recipes/[id]/serving-scaler.tsx`. Non-matching values show up to 2 decimals (was 1). Edit form unchanged.
+- Recipe detail now shows ingredient quantities as fractions when they fit exactly — only for values below 1 (denominators 2, 3, 4, 5, 6, 8, 10, 20; 0.33/0.66 read as thirds, 0.16/0.17 as 1/6). Values ≥ 1 stay decimal (1.5). New `formatQuantity()` in `lib/utils.ts`, used by `app/recipes/[id]/serving-scaler.tsx`. Non-matching values show up to 2 decimals (was 1). Edit form unchanged.
