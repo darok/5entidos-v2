@@ -13,25 +13,22 @@ export function scaleQuantity(quantity: number | null, scale: number): number | 
 }
 
 // Denominators shown as fractions, in order of preference (1/2 wins over 2/4, 10/20, …)
-const FRACTION_DENOMINATORS = [2, 3, 4, 5, 10, 20]
-// Absorbs float noise and lets typed approximations like 0.33 / 0.67 read as thirds
-const FRACTION_TOLERANCE = 0.005
+const FRACTION_DENOMINATORS = [2, 3, 4, 5, 6, 8, 10, 20]
+// Absorbs float noise and lets typed approximations like 0.33 / 0.66 / 0.16 read as thirds and sixths
+const FRACTION_TOLERANCE = 0.007
 
-// Formats a quantity for display: "1/2", "1 1/3", "3/4"; falls back to at most 2 decimals when no fraction fits
+// Formats a quantity for display: values below 1 as "1/2", "3/4", "1/6" when a fraction fits; everything else as at most 2 decimals
 export function formatQuantity(quantity: number): string {
-  const whole = Math.floor(quantity)
-  const remainder = quantity - whole
-  if (remainder < FRACTION_TOLERANCE) return String(whole)
-  if (1 - remainder < FRACTION_TOLERANCE) return String(whole + 1)
+  const decimal = String(Math.round(quantity * 100) / 100)
+  if (quantity <= 0 || quantity >= 1 - FRACTION_TOLERANCE) return decimal
 
   for (const denominator of FRACTION_DENOMINATORS) {
-    const numerator = Math.round(remainder * denominator)
-    if (numerator > 0 && Math.abs(remainder - numerator / denominator) < FRACTION_TOLERANCE) {
-      const fraction = `${numerator}/${denominator}`
-      return whole > 0 ? `${whole} ${fraction}` : fraction
+    const numerator = Math.round(quantity * denominator)
+    if (numerator > 0 && Math.abs(quantity - numerator / denominator) < FRACTION_TOLERANCE) {
+      return `${numerator}/${denominator}`
     }
   }
-  return String(Math.round(quantity * 100) / 100)
+  return decimal
 }
 
 // Capitalizes the first letter, leaving the rest untouched
