@@ -44,3 +44,7 @@
 - `app/api/admin/cleanup-images/route.ts`: reuses `lib/storage.ts`, skips files under 24h old (could be an unsaved edit) and folders. Abandoned uploads/crops now become orphans for this cleanup.
 - Shawarma's original image file is gone — must be re-uploaded by hand.
 - No test framework in the project yet, so the new `lib/db/recipes.ts` image-deletion logic has no tests.
+
+## 2026-10-13
+
+- Recipe detail now shows ingredient quantities as fractions when they fit exactly (denominators 2, 3, 4, 5, 10, 20; mixed numbers like "1 1/2"; 0.33/0.67 read as thirds). New `formatQuantity()` in `lib/utils.ts`, used by `app/recipes/[id]/serving-scaler.tsx`. Non-matching values show up to 2 decimals (was 1). Edit form unchanged.
